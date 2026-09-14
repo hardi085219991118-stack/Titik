@@ -126,10 +126,10 @@ class MapFoundationRobolectricTest {
       fire005?.status
     )
 
-    // Section 2: FIRE-006 s/d FIRE-008 TETAP NOT_STARTED
+    // Section 2: FIRE-006 IMPLEMENTED, FIRE-007 s/d FIRE-008 TETAP NOT_STARTED
     val fire006 = FeatureRegistry.getFeature("FIRE-006")
     assertNotNull("FIRE-006 must exist in registry", fire006)
-    assertEquals("FIRE-006 must remain NOT_STARTED in Prompt 005", FeatureStatus.NOT_STARTED, fire006?.status)
+    assertEquals("FIRE-006 must be IMPLEMENTED in Prompt 006A", FeatureStatus.IMPLEMENTED, fire006?.status)
 
     val fire007 = FeatureRegistry.getFeature("FIRE-007")
     assertEquals("FIRE-007 must remain NOT_STARTED", FeatureStatus.NOT_STARTED, fire007?.status)

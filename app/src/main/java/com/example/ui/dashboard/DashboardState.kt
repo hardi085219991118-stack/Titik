@@ -33,22 +33,39 @@ data class DashboardState(
   val deviceLocation: DeviceLocation? = null,
   val locationErrorMessage: String? = null,
 
-  // Fire Data State (FIRE-006 & FIRE-007 - tetap NOT_STARTED)
+  // Fire Data State (FIRE-006 - Real Fire Data Source)
   val fireDataState: DataState = DataState.NOT_VERIFIED,
+  val fireDataSourceState: com.example.core.fire.FireDataSourceState = com.example.core.fire.FireDataSourceState.NOT_VERIFIED,
+  val credentialState: com.example.core.fire.FireDataCredentialState = com.example.core.fire.FireDataCredentialState.NOT_CONFIGURED,
+  val validFireRecordCount: Int? = null,
   val fireCountDisplay: String = "--",
   val fireStatusText: String = "FIRE DATA SOURCE NOT VERIFIED",
   val fireNote: String = "Sumber data titik api belum dihubungkan. Menampilkan '--' karena belum ada data (Bukan 0 titik api).",
+  val fireRecords: List<com.example.core.fire.FireDataRecord> = emptyList(),
 
-  // Satellite Data State (FIRE-006 - tetap NOT_STARTED)
+  // Satellite Data State (FIRE-006)
   val satelliteState: DataState = DataState.NOT_VERIFIED,
   val satelliteDisplay: String = "BELUM TERSEDIA",
   val satelliteNote: String = "DATA SOURCE NOT VERIFIED (Modul FIRE-006 belum aktif).",
+  val satelliteSensorName: String = "NASA FIRMS (VIIRS NOAA-21 / NOAA-20 / SNPP / MODIS)",
+  val freshnessLevel: com.example.core.fire.FreshnessLevel = com.example.core.fire.FreshnessLevel.FRESHNESS_UNKNOWN,
+  val isCachedFireData: Boolean = false,
+  val cacheAgeSeconds: Long = 0L,
 
-  // Last Satellite Update State (tetap NOT_STARTED)
+  // Last Satellite Update State
   val lastUpdateState: DataState = DataState.NOT_AVAILABLE,
   val lastUpdateDisplay: String = "BELUM TERSEDIA",
   val lastUpdateNote: String = "Waktu akuisisi satelit belum tersedia. Waktu perangkat tidak disamakan dengan waktu satelit (Aturan 7).",
+  val lastFetchDisplay: String = "BELUM PERNAH",
 
-  val isRefreshSatelliteEnabled: Boolean = false,
-  val refreshSatelliteNote: String = "Tombol dinonaktifkan: Sumber data satelit (FIRE-006) belum diintegrasikan."
+  val isRefreshSatelliteEnabled: Boolean = true,
+  val isLoadingSatellite: Boolean = false,
+  val refreshSatelliteNote: String = "Tekan untuk memperbarui data satelit NASA FIRMS.",
+
+  // Security Architecture & Evidence Audit (Prompt 006B Section 5, 6, 13)
+  val architectureStatus: String = "CLIENT_ONLY_LIMITATION",
+  val credentialType: String = "CLIENT_SIDE_CREDENTIAL",
+  val securityLimitation: String = "PRODUCTION_SECURITY_LIMITATION",
+  val responseSha256Hash: String? = null,
+  val rawRecordCount: Int = 0
 )

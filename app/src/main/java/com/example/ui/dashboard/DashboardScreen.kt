@@ -23,10 +23,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.GpsNotFixed
 import androidx.compose.material.icons.filled.GpsOff
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
@@ -35,6 +37,7 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -45,6 +48,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -87,13 +91,82 @@ fun DashboardScreen(
   modifier: Modifier = Modifier,
   state: DashboardState = remember { DashboardState() },
   onRequestPermission: () -> Unit = {},
-  onRefreshLocation: () -> Unit = {}
+  onRefreshLocation: () -> Unit = {},
+  onRefreshSatellite: () -> Unit = {},
+  onSetMapKey: (String?) -> Unit = {}
 ) {
   val context = LocalContext.current
   var showContractScreen by remember { mutableStateOf(false) }
   var showMapScreen by remember { mutableStateOf(false) }
+  var showKeyDialog by remember { mutableStateOf(false) }
+  var keyInput by remember { mutableStateOf("") }
   val auditEvents by AppLogger.auditEvents.collectAsState()
   val errorLogs by AppLogger.errorLog.collectAsState()
+
+  if (showKeyDialog) {
+    AlertDialog(
+      onDismissRequest = { showKeyDialog = false },
+      title = {
+        Text("Konfigurasi NASA FIRMS MAP_KEY", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+      },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Text(
+            "Masukkan MAP_KEY resmi NASA FIRMS Anda untuk menguji query data satelit riil.",
+            style = MaterialTheme.typography.bodySmall
+          )
+          OutlinedTextField(
+            value = keyInput,
+            onValueChange = { keyInput = it },
+            label = { Text("NASA FIRMS MAP_KEY") },
+            placeholder = { Text("Contoh: a1b2c3d4e5f6...") },
+            modifier = Modifier
+              .fillMaxWidth()
+              .testTag("map_key_input_field"),
+            singleLine = true
+          )
+          Text(
+            "STATUS ARSITEKTUR: CLIENT_ONLY_LIMITATION\n" +
+            "JENIS KREDENSIAL: CLIENT_SIDE_CREDENTIAL\n" +
+            "BATASAN KEAMANAN: PRODUCTION_SECURITY_LIMITATION\n\n" +
+            "Peringatan: Kredensial disimpan pada SharedPreferences lokal. Jangan gunakan API Key produksi bernilai tinggi tanpa backend proxy/KMS.",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontFamily = FontFamily.Monospace,
+              fontSize = 10.sp
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            onSetMapKey(keyInput.trim())
+            showKeyDialog = false
+          },
+          modifier = Modifier.testTag("save_map_key_button")
+        ) {
+          Text("Simpan")
+        }
+      },
+      dismissButton = {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          TextButton(
+            onClick = {
+              onSetMapKey(null)
+              keyInput = ""
+              showKeyDialog = false
+            }
+          ) {
+            Text("Hapus Kunci")
+          }
+          TextButton(onClick = { showKeyDialog = false }) {
+            Text("Batal")
+          }
+        }
+      }
+    )
+  }
 
   val permissionLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -251,7 +324,10 @@ fun DashboardScreen(
       }
 
       item {
-        SatelliteDataCard(state = state)
+        SatelliteDataCard(
+          state = state,
+          onConfigureKey = { showKeyDialog = true }
+        )
       }
 
       item {
@@ -259,7 +335,10 @@ fun DashboardScreen(
       }
 
       item {
-        RefreshSection(state = state)
+        RefreshSection(
+          state = state,
+          onRefreshSatellite = onRefreshSatellite
+        )
       }
 
       item {
@@ -927,6 +1006,12 @@ fun LocationDataDisplay(
 
 @Composable
 fun FireDetectionCard(state: DashboardState) {
+  val badgeColor = when (state.fireDataState) {
+    DataState.AVAILABLE -> StatusVerified
+    DataState.NOT_VERIFIED -> StatusNotStarted
+    DataState.ERROR -> StatusBlocked
+    else -> StatusNotStarted
+  }
   Card(
     modifier = Modifier
       .fillMaxWidth()
@@ -949,7 +1034,7 @@ fun FireDetectionCard(state: DashboardState) {
           Icon(
             imageVector = Icons.Default.Whatshot,
             contentDescription = "Titik Api",
-            tint = MaterialTheme.colorScheme.primary,
+            tint = if (state.fireDataState == DataState.AVAILABLE) StatusVerified else MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(24.dp)
           )
           Text(
@@ -958,7 +1043,7 @@ fun FireDetectionCard(state: DashboardState) {
             color = MaterialTheme.colorScheme.onSurface
           )
         }
-        StateBadge(text = state.fireStatusText, color = StatusBlocked)
+        StateBadge(text = state.fireStatusText, color = badgeColor)
       }
 
       Spacer(modifier = Modifier.height(16.dp))
@@ -977,7 +1062,7 @@ fun FireDetectionCard(state: DashboardState) {
           modifier = Modifier.testTag("fire_count_value")
         )
         Text(
-          text = "DATA BELUM TERSEDIA",
+          text = if (state.validFireRecordCount != null) "DETEKSI RESMI DARI SATELIT" else "DATA BELUM TERSEDIA",
           style = MaterialTheme.typography.bodyMedium.copy(
             fontWeight = FontWeight.SemiBold,
             fontFamily = FontFamily.Monospace
@@ -999,7 +1084,16 @@ fun FireDetectionCard(state: DashboardState) {
 }
 
 @Composable
-fun SatelliteDataCard(state: DashboardState) {
+fun SatelliteDataCard(
+  state: DashboardState,
+  onConfigureKey: () -> Unit = {}
+) {
+  val badgeColor = when (state.satelliteState) {
+    DataState.AVAILABLE -> StatusVerified
+    DataState.NOT_VERIFIED -> StatusNotStarted
+    DataState.ERROR -> StatusBlocked
+    else -> StatusNotStarted
+  }
   Card(
     modifier = Modifier
       .fillMaxWidth()
@@ -1024,9 +1118,9 @@ fun SatelliteDataCard(state: DashboardState) {
           horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
           Icon(
-            imageVector = Icons.Default.CloudOff,
+            imageVector = if (state.satelliteState == DataState.AVAILABLE) Icons.Default.CloudDone else Icons.Default.CloudOff,
             contentDescription = "Data Satelit",
-            tint = StatusNotStarted,
+            tint = badgeColor,
             modifier = Modifier.size(22.dp)
           )
           Text(
@@ -1035,7 +1129,7 @@ fun SatelliteDataCard(state: DashboardState) {
             color = MaterialTheme.colorScheme.onSurface
           )
         }
-        StateBadge(text = state.satelliteDisplay, color = StatusNotStarted)
+        StateBadge(text = state.satelliteDisplay, color = badgeColor)
       }
 
       Spacer(modifier = Modifier.height(8.dp))
@@ -1045,12 +1139,85 @@ fun SatelliteDataCard(state: DashboardState) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
       )
+
+      Spacer(modifier = Modifier.height(8.dp))
+
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .clip(RoundedCornerShape(4.dp))
+          .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+          .padding(horizontal = 8.dp, vertical = 6.dp)
+      ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+          Text(
+            text = "ARSITEKTUR: ${state.architectureStatus} (${state.credentialType})",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontFamily = FontFamily.Monospace,
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Bold
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+          Text(
+            text = "BATASAN: ${state.securityLimitation} (Penyimpanan lokal perangkat)",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontFamily = FontFamily.Monospace,
+              fontSize = 9.sp
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+          )
+          if (state.responseSha256Hash != null) {
+            Text(
+              text = "RESPONSE HASH: ${state.responseSha256Hash.take(16)}...",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold
+              ),
+              color = MaterialTheme.colorScheme.primary
+            )
+          }
+        }
+      }
+
+      Spacer(modifier = Modifier.height(8.dp))
+
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Text(
+          text = "Status Kredensial: ${state.credentialState.name}",
+          style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        TextButton(
+          onClick = onConfigureKey,
+          modifier = Modifier.testTag("configure_key_button")
+        ) {
+          Icon(
+            imageVector = Icons.Default.Key,
+            contentDescription = "Konfigurasi MAP_KEY",
+            modifier = Modifier.size(14.dp)
+          )
+          Spacer(modifier = Modifier.width(4.dp))
+          Text("MAP_KEY", style = MaterialTheme.typography.labelSmall)
+        }
+      }
     }
   }
 }
 
 @Composable
 fun LastUpdateCard(state: DashboardState) {
+  val badgeColor = when (state.lastUpdateState) {
+    DataState.AVAILABLE -> StatusVerified
+    DataState.NOT_VERIFIED -> StatusNotStarted
+    DataState.ERROR -> StatusBlocked
+    else -> StatusNotStarted
+  }
   Card(
     modifier = Modifier
       .fillMaxWidth()
@@ -1077,7 +1244,7 @@ fun LastUpdateCard(state: DashboardState) {
           Icon(
             imageVector = Icons.Default.Schedule,
             contentDescription = "Data Terakhir",
-            tint = StatusNotStarted,
+            tint = badgeColor,
             modifier = Modifier.size(22.dp)
           )
           Text(
@@ -1086,7 +1253,7 @@ fun LastUpdateCard(state: DashboardState) {
             color = MaterialTheme.colorScheme.onSurface
           )
         }
-        StateBadge(text = state.lastUpdateDisplay, color = StatusNotStarted)
+        StateBadge(text = state.lastUpdateDisplay, color = badgeColor)
       }
 
       Spacer(modifier = Modifier.height(8.dp))
@@ -1101,7 +1268,10 @@ fun LastUpdateCard(state: DashboardState) {
 }
 
 @Composable
-fun RefreshSection(state: DashboardState) {
+fun RefreshSection(
+  state: DashboardState,
+  onRefreshSatellite: () -> Unit = {}
+) {
   Card(
     modifier = Modifier.fillMaxWidth(),
     colors = CardDefaults.cardColors(
@@ -1112,20 +1282,31 @@ fun RefreshSection(state: DashboardState) {
     Column(modifier = Modifier.padding(16.dp)) {
       OutlinedButton(
         onClick = {
-          AppLogger.recordEvent("User clicked Refresh: Data source belum tersedia (FIRE-006 NOT_STARTED)")
+          AppLogger.recordEvent("User clicked Refresh: Memperbarui data satelit NASA FIRMS")
+          onRefreshSatellite()
         },
-        enabled = state.isRefreshSatelliteEnabled,
+        enabled = state.isRefreshSatelliteEnabled && !state.isLoadingSatellite,
         modifier = Modifier
           .fillMaxWidth()
           .testTag("refresh_button")
       ) {
-        Icon(
-          imageVector = Icons.Default.Refresh,
-          contentDescription = "Perbarui Data",
-          modifier = Modifier.size(18.dp)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text("PERBARUI DATA SATELIT")
+        if (state.isLoadingSatellite) {
+          CircularProgressIndicator(
+            modifier = Modifier.size(18.dp),
+            strokeWidth = 2.dp,
+            color = MaterialTheme.colorScheme.primary
+          )
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("MENGHUBUNGI NASA FIRMS...")
+        } else {
+          Icon(
+            imageVector = Icons.Default.Refresh,
+            contentDescription = "Perbarui Data",
+            modifier = Modifier.size(18.dp)
+          )
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("PERBARUI DATA SATELIT")
+        }
       }
 
       Spacer(modifier = Modifier.height(8.dp))

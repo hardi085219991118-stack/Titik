@@ -3,6 +3,12 @@ package com.example.ui.dashboard
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.core.fire.FireDataCredentialState
+import com.example.core.fire.FireDataRepository
+import com.example.core.fire.FireDataResponse
+import com.example.core.fire.FireDataSourceState
+import com.example.core.fire.FreshnessLevel
+import com.example.core.fire.RealFireDataRepository
 import com.example.core.location.AndroidLocationTracker
 import com.example.core.location.DeviceLocation
 import com.example.core.location.LocationStatus
@@ -12,13 +18,24 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 class DashboardViewModel(
-  private val locationTracker: LocationTracker
+  private val locationTracker: LocationTracker,
+  private val fireRepository: FireDataRepository? = null
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(DashboardState())
   val uiState: StateFlow<DashboardState> = _uiState.asStateFlow()
+
+  private val utcDateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm 'UTC'", Locale.US).apply {
+    timeZone = TimeZone.getTimeZone("UTC")
+  }
+  private val localTimeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
   init {
     combine(
@@ -32,6 +49,237 @@ class DashboardViewModel(
         locationErrorMessage = errorMsg
       )
     }.launchIn(viewModelScope)
+
+    fireRepository?.let { repo ->
+      combine(
+        repo.fireDataResponse,
+        repo.credentialState,
+        repo.dataSourceState
+      ) { response, credState, sourceState ->
+        mapFireResponseToUiState(response, credState, sourceState)
+      }.launchIn(viewModelScope)
+    }
+  }
+
+  private fun mapFireResponseToUiState(
+    response: FireDataResponse,
+    credState: FireDataCredentialState,
+    sourceState: FireDataSourceState
+  ) {
+    val current = _uiState.value
+    val firstRecord = response.records.firstOrNull()
+
+    val formattedAcqTime = if (firstRecord?.acquisitionTimestampMillis != null) {
+      utcDateFormat.format(Date(firstRecord.acquisitionTimestampMillis))
+    } else if (!firstRecord?.acqDate.isNullOrBlank()) {
+      "${firstRecord?.acqDate} ${firstRecord?.acqTime} UTC"
+    } else {
+      "BELUM TERSEDIA"
+    }
+
+    val formattedFetchTime = if (response.fetchTimeMillis > 0) {
+      localTimeFormat.format(Date(response.fetchTimeMillis))
+    } else {
+      "BELUM PERNAH"
+    }
+
+    val newState = when (sourceState) {
+      FireDataSourceState.NOT_VERIFIED -> current.copy(
+        fireDataState = DataState.NOT_VERIFIED,
+        fireDataSourceState = FireDataSourceState.NOT_VERIFIED,
+        credentialState = credState,
+        validFireRecordCount = null,
+        fireCountDisplay = "--",
+        fireStatusText = "FIRE DATA SOURCE NOT VERIFIED",
+        fireNote = "Sumber data titik api belum dihubungkan. Menampilkan '--' karena belum ada data (Bukan 0 titik api).",
+        fireRecords = emptyList(),
+        satelliteState = DataState.NOT_VERIFIED,
+        satelliteDisplay = "BELUM TERSEDIA",
+        satelliteNote = "DATA SOURCE NOT VERIFIED (Modul FIRE-006 belum aktif).",
+        lastUpdateState = DataState.NOT_AVAILABLE,
+        lastUpdateDisplay = "BELUM TERSEDIA",
+        lastUpdateNote = "Waktu akuisisi satelit belum tersedia. Waktu perangkat tidak disamakan dengan waktu satelit (Aturan 7).",
+        isLoadingSatellite = false
+      )
+
+      FireDataSourceState.DATA_SOURCE_AVAILABLE -> current.copy(
+        fireDataState = DataState.AVAILABLE,
+        fireDataSourceState = FireDataSourceState.DATA_SOURCE_AVAILABLE,
+        credentialState = credState,
+        validFireRecordCount = response.validRecordCount,
+        rawRecordCount = response.rawRecordCount,
+        responseSha256Hash = response.responseSha256Hash,
+        fireCountDisplay = response.validRecordCount.toString(),
+        fireStatusText = "DATA SOURCE AVAILABLE",
+        fireNote = "Ditemukan ${response.validRecordCount} deteksi titik api valid dari sensor ${response.sourceSensor}.",
+        fireRecords = response.records,
+        satelliteState = DataState.AVAILABLE,
+        satelliteDisplay = response.sourceSensor,
+        satelliteNote = "Sensor: ${response.sourceSensor} | Satelit: ${firstRecord?.satellite ?: "N/A"}",
+        freshnessLevel = response.freshness,
+        isCachedFireData = response.isCached,
+        lastUpdateState = DataState.AVAILABLE,
+        lastUpdateDisplay = formattedAcqTime,
+        lastUpdateNote = "Waktu akuisisi satelit: $formattedAcqTime. Waktu fetch perangkat: $formattedFetchTime (TIDAK DISAMAKAN).",
+        lastFetchDisplay = formattedFetchTime,
+        isLoadingSatellite = false
+      )
+
+      FireDataSourceState.NO_DETECTIONS_IN_QUERY -> current.copy(
+        fireDataState = DataState.AVAILABLE,
+        fireDataSourceState = FireDataSourceState.NO_DETECTIONS_IN_QUERY,
+        credentialState = credState,
+        validFireRecordCount = 0,
+        rawRecordCount = response.rawRecordCount,
+        responseSha256Hash = response.responseSha256Hash,
+        fireCountDisplay = "0",
+        fireStatusText = "NO DETECTIONS IN QUERY",
+        fireNote = "Tidak ada titik api terdeteksi dalam area query pada overpass satelit terakhir (${response.sourceSensor}).",
+        fireRecords = emptyList(),
+        satelliteState = DataState.AVAILABLE,
+        satelliteDisplay = response.sourceSensor,
+        satelliteNote = "Sensor: ${response.sourceSensor} | Status: 0 Deteksi dalam query",
+        freshnessLevel = FreshnessLevel.FRESHNESS_UNKNOWN,
+        isCachedFireData = response.isCached,
+        lastUpdateState = DataState.AVAILABLE,
+        lastUpdateDisplay = "0 DETEKSI",
+        lastUpdateNote = "Query valid berhasil dieksekusi. Tidak ada hotspot teramati. Waktu fetch: $formattedFetchTime.",
+        lastFetchDisplay = formattedFetchTime,
+        isLoadingSatellite = false
+      )
+
+      FireDataSourceState.API_CREDENTIAL_REQUIRED -> current.copy(
+        fireDataState = DataState.ERROR,
+        fireDataSourceState = FireDataSourceState.API_CREDENTIAL_REQUIRED,
+        credentialState = credState,
+        validFireRecordCount = null,
+        fireCountDisplay = "--",
+        fireStatusText = "API CREDENTIAL REQUIRED",
+        fireNote = "MAP_KEY NASA FIRMS belum dikonfigurasi. Daftarkan MAP_KEY resmi di https://firms.modaps.eosdis.nasa.gov.",
+        fireRecords = emptyList(),
+        satelliteState = DataState.ERROR,
+        satelliteDisplay = "CREDENTIAL REQUIRED",
+        satelliteNote = "MAP_KEY FIRMS diperlukan untuk mengakses web service NASA.",
+        lastUpdateState = DataState.NOT_AVAILABLE,
+        lastUpdateDisplay = "BELUM TERSEDIA",
+        isLoadingSatellite = false
+      )
+
+      FireDataSourceState.NETWORK_ERROR -> current.copy(
+        fireDataState = DataState.ERROR,
+        fireDataSourceState = FireDataSourceState.NETWORK_ERROR,
+        credentialState = credState,
+        validFireRecordCount = null,
+        fireCountDisplay = "--",
+        fireStatusText = "NETWORK ERROR",
+        fireNote = "Gagal menghubungi server NASA FIRMS. Periksa koneksi internet perangkat.",
+        fireRecords = emptyList(),
+        satelliteState = DataState.ERROR,
+        satelliteDisplay = "NETWORK ERROR",
+        satelliteNote = "Koneksi internet terputus atau DNS gagal.",
+        lastUpdateState = DataState.NOT_AVAILABLE,
+        lastUpdateDisplay = "BELUM TERSEDIA",
+        isLoadingSatellite = false
+      )
+
+      FireDataSourceState.TIMEOUT -> current.copy(
+        fireDataState = DataState.ERROR,
+        fireDataSourceState = FireDataSourceState.TIMEOUT,
+        credentialState = credState,
+        validFireRecordCount = null,
+        fireCountDisplay = "--",
+        fireStatusText = "TIMEOUT",
+        fireNote = "Waktu koneksi ke server NASA FIRMS habis (Timeout).",
+        fireRecords = emptyList(),
+        satelliteState = DataState.ERROR,
+        satelliteDisplay = "TIMEOUT",
+        satelliteNote = "Koneksi ke NASA FIRMS melebihi batas waktu.",
+        lastUpdateState = DataState.NOT_AVAILABLE,
+        lastUpdateDisplay = "BELUM TERSEDIA",
+        isLoadingSatellite = false
+      )
+
+      FireDataSourceState.RATE_LIMIT_EXCEEDED -> current.copy(
+        fireDataState = DataState.ERROR,
+        fireDataSourceState = FireDataSourceState.RATE_LIMIT_EXCEEDED,
+        credentialState = credState,
+        validFireRecordCount = null,
+        fireCountDisplay = "--",
+        fireStatusText = "RATE LIMIT EXCEEDED (HTTP 429)",
+        fireNote = "Permintaan melebihi kuota NASA FIRMS. Cooldown dan backoff sedang aktif.",
+        fireRecords = emptyList(),
+        satelliteState = DataState.ERROR,
+        satelliteDisplay = "RATE LIMITED",
+        satelliteNote = "HTTP 429 Too Many Requests dari NASA FIRMS.",
+        lastUpdateState = DataState.NOT_AVAILABLE,
+        lastUpdateDisplay = "BELUM TERSEDIA",
+        isLoadingSatellite = false
+      )
+
+      FireDataSourceState.DATA_SOURCE_UNAVAILABLE -> current.copy(
+        fireDataState = DataState.ERROR,
+        fireDataSourceState = FireDataSourceState.DATA_SOURCE_UNAVAILABLE,
+        credentialState = credState,
+        validFireRecordCount = null,
+        fireCountDisplay = "--",
+        fireStatusText = "DATA SOURCE UNAVAILABLE",
+        fireNote = response.error?.message ?: "Server NASA FIRMS tidak dapat dihubungi.",
+        fireRecords = emptyList(),
+        satelliteState = DataState.ERROR,
+        satelliteDisplay = "UNAVAILABLE",
+        satelliteNote = "Server NASA FIRMS mengalami gangguan.",
+        lastUpdateState = DataState.NOT_AVAILABLE,
+        lastUpdateDisplay = "BELUM TERSEDIA",
+        isLoadingSatellite = false
+      )
+
+      FireDataSourceState.INVALID_DATA_RESPONSE -> current.copy(
+        fireDataState = DataState.ERROR,
+        fireDataSourceState = FireDataSourceState.INVALID_DATA_RESPONSE,
+        credentialState = credState,
+        validFireRecordCount = null,
+        fireCountDisplay = "--",
+        fireStatusText = "INVALID DATA RESPONSE",
+        fireNote = response.error?.message ?: "Payload CSV dari NASA FIRMS tidak valid.",
+        fireRecords = emptyList(),
+        satelliteState = DataState.ERROR,
+        satelliteDisplay = "INVALID RESPONSE",
+        satelliteNote = "Format respons tidak dikenali.",
+        lastUpdateState = DataState.NOT_AVAILABLE,
+        lastUpdateDisplay = "BELUM TERSEDIA",
+        isLoadingSatellite = false
+      )
+
+      FireDataSourceState.CONNECTING -> current.copy(
+        fireDataSourceState = FireDataSourceState.CONNECTING,
+        isLoadingSatellite = true,
+        refreshSatelliteNote = "Sedang menghubungkan ke NASA FIRMS Web Services..."
+      )
+
+      FireDataSourceState.CACHED -> current.copy(
+        fireDataState = DataState.AVAILABLE,
+        fireDataSourceState = FireDataSourceState.CACHED,
+        credentialState = credState,
+        validFireRecordCount = response.validRecordCount,
+        fireCountDisplay = response.validRecordCount.toString(),
+        fireStatusText = "CACHED DATA",
+        fireNote = "Data cache tersimpan (${response.cacheAgeMillis / 1000}s lalu). BUKAN DATA LIVE.",
+        fireRecords = response.records,
+        satelliteState = DataState.AVAILABLE,
+        satelliteDisplay = "${response.sourceSensor} (CACHE)",
+        satelliteNote = "Menampilkan data lokal dari cache. Usia cache: ${response.cacheAgeMillis / 1000} detik.",
+        freshnessLevel = response.freshness,
+        isCachedFireData = true,
+        cacheAgeSeconds = response.cacheAgeMillis / 1000,
+        lastUpdateState = DataState.AVAILABLE,
+        lastUpdateDisplay = formattedAcqTime,
+        lastUpdateNote = "Waktu akuisisi satelit: $formattedAcqTime. Data berasal dari cache lokal.",
+        lastFetchDisplay = formattedFetchTime,
+        isLoadingSatellite = false
+      )
+    }
+
+    _uiState.value = newState
   }
 
   fun requestLocation(context: Context) {
@@ -56,6 +304,26 @@ class DashboardViewModel(
     _uiState.value = _uiState.value.copy(mapStatus = status)
   }
 
+  fun refreshFireData(force: Boolean = false) {
+    if (fireRepository == null) return
+    viewModelScope.launch {
+      _uiState.value = _uiState.value.copy(isLoadingSatellite = true)
+      fireRepository.refreshFireData(force = force)
+    }
+  }
+
+  fun setMapKey(key: String?): FireDataCredentialState {
+    return fireRepository?.setMapKey(key) ?: FireDataCredentialState.NOT_CONFIGURED
+  }
+
+  fun clearMapKey() {
+    fireRepository?.clearMapKey()
+  }
+
+  fun getMapKey(): String? {
+    return fireRepository?.getMapKey()
+  }
+
   override fun onCleared() {
     super.onCleared()
     locationTracker.stopTracking()
@@ -64,7 +332,9 @@ class DashboardViewModel(
   companion object {
     fun create(context: Context): DashboardViewModel {
       val tracker = AndroidLocationTracker(context.applicationContext)
-      return DashboardViewModel(tracker)
+      val fireRepo = RealFireDataRepository.create(context.applicationContext)
+      return DashboardViewModel(tracker, fireRepo)
     }
   }
 }
+

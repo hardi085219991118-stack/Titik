@@ -373,7 +373,7 @@ class DeviceLocationRobolectricTest {
   @Test
   fun `test zero fire markers policy across registries Prompt 005C`() {
     val fire006 = com.example.core.registry.FeatureRegistry.getFeature("FIRE-006")
-    assertEquals(com.example.core.contract.FeatureStatus.NOT_STARTED, fire006?.status)
+    assertEquals(com.example.core.contract.FeatureStatus.IMPLEMENTED, fire006?.status)
 
     val fire007 = com.example.core.registry.FeatureRegistry.getFeature("FIRE-007")
     assertEquals(com.example.core.contract.FeatureStatus.NOT_STARTED, fire007?.status)

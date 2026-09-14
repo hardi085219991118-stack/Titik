@@ -67,12 +67,19 @@ class ExampleRobolectricTest {
       fire005?.status
     )
 
-    // Contract Section 2 Prompt 005: FIRE-006 s/d FIRE-008 TETAP NOT_STARTED
-    listOf("FIRE-006", "FIRE-007", "FIRE-008").forEach { id ->
+    val fire006 = FeatureRegistry.getFeature("FIRE-006")
+    assertNotNull(fire006)
+    assertEquals(
+      "Feature FIRE-006 must be IMPLEMENTED on Prompt 006A",
+      FeatureStatus.IMPLEMENTED,
+      fire006?.status
+    )
+
+    listOf("FIRE-007", "FIRE-008").forEach { id ->
       val feat = FeatureRegistry.getFeature(id)
       assertNotNull(feat)
       assertEquals(
-        "Feature $id must strictly be NOT_STARTED on Prompt 005",
+        "Feature $id must strictly be NOT_STARTED on Prompt 006A",
         FeatureStatus.NOT_STARTED,
         feat?.status
       )

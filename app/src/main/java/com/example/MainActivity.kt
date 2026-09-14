@@ -41,6 +41,12 @@ class MainActivity : ComponentActivity() {
           },
           onRefreshLocation = {
             viewModel.refreshLocation(context)
+          },
+          onRefreshSatellite = {
+            viewModel.refreshFireData(force = true)
+          },
+          onSetMapKey = { key ->
+            viewModel.setMapKey(key)
           }
         )
       }
