@@ -22,13 +22,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.GpsNotFixed
 import androidx.compose.material.icons.filled.GpsOff
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Shield
@@ -69,6 +70,8 @@ import com.example.core.location.DeviceLocation
 import com.example.core.location.LocationStatus
 import com.example.core.logging.AppLogger
 import com.example.ui.FoundationScreen
+import com.example.ui.map.MapScreen
+import com.example.ui.map.MapStatus
 import com.example.ui.theme.StatusBlocked
 import com.example.ui.theme.StatusNotStarted
 import com.example.ui.theme.StatusVerified
@@ -86,6 +89,7 @@ fun DashboardScreen(
 ) {
   val context = LocalContext.current
   var showContractScreen by remember { mutableStateOf(false) }
+  var showMapScreen by remember { mutableStateOf(false) }
   val auditEvents by AppLogger.auditEvents.collectAsState()
   val errorLogs by AppLogger.errorLog.collectAsState()
 
@@ -99,6 +103,25 @@ fun DashboardScreen(
     } else {
       onRequestPermission()
     }
+  }
+
+  if (showMapScreen) {
+    MapScreen(
+      deviceLocation = state.deviceLocation,
+      locationStatus = state.locationStatus,
+      locationErrorMessage = state.locationErrorMessage,
+      onBackToDashboard = { showMapScreen = false },
+      onRefreshLocation = onRefreshLocation,
+      onRequestPermission = {
+        permissionLauncher.launch(
+          arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+          )
+        )
+      }
+    )
+    return
   }
 
   if (showContractScreen) {
@@ -146,6 +169,16 @@ fun DashboardScreen(
           }
         },
         actions = {
+          TextButton(
+            onClick = { showMapScreen = true },
+            modifier = Modifier.testTag("open_map_button")
+          ) {
+            Text(
+              text = "Peta",
+              style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+              color = MaterialTheme.colorScheme.primary
+            )
+          }
           TextButton(
             onClick = { showContractScreen = true },
             modifier = Modifier.testTag("view_contract_button")
@@ -201,6 +234,13 @@ fun DashboardScreen(
             }
             context.startActivity(intent)
           }
+        )
+      }
+
+      item {
+        MapFoundationCard(
+          state = state,
+          onOpenMap = { showMapScreen = true }
         )
       }
 
@@ -476,7 +516,7 @@ fun RealLocationCard(
                   .weight(1f)
                   .testTag("open_settings_button")
               ) {
-                Icon(imageVector = Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(imageVector = Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("PENGATURAN")
               }
@@ -575,19 +615,67 @@ fun LocationDataDisplay(
     modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(8.dp)
   ) {
-    if (location.isFromCache) {
+    if (location.isMock) {
       Box(
         modifier = Modifier
+          .fillMaxWidth()
           .clip(RoundedCornerShape(4.dp))
-          .background(MaterialTheme.colorScheme.tertiaryContainer)
-          .padding(horizontal = 8.dp, vertical = 2.dp)
+          .background(MaterialTheme.colorScheme.errorContainer)
+          .padding(horizontal = 8.dp, vertical = 4.dp)
       ) {
         Text(
-          text = "CACHED FIX (Perangkat menggunakan lokasi terakhir tersimpan)",
+          text = "CRITICAL: MOCK / FAKE LOCATION TERDETEKSI (DATA TIDAK TERVERIFIKASI)",
+          style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+          color = MaterialTheme.colorScheme.onErrorContainer
+        )
+      }
+    } else if (location.isFromCache) {
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .clip(RoundedCornerShape(4.dp))
+          .background(MaterialTheme.colorScheme.tertiaryContainer)
+          .padding(horizontal = 8.dp, vertical = 4.dp)
+      ) {
+        Text(
+          text = "CACHED FIX (Lokasi terakhir tersimpan, bukan Real-time GPS Now)",
           style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
           color = MaterialTheme.colorScheme.onTertiaryContainer
         )
       }
+    } else {
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .clip(RoundedCornerShape(4.dp))
+          .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+          .padding(horizontal = 8.dp, vertical = 4.dp)
+      ) {
+        Text(
+          text = "CURRENT RUNTIME FIX (${location.locationSource})",
+          style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+          color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+      }
+    }
+
+    // Disclaimer Kejujuran Real Device
+    Box(
+      modifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(4.dp))
+        .background(MaterialTheme.colorScheme.surfaceVariant)
+        .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+      Text(
+        text = "REAL DEVICE GPS VERIFICATION: NOT AVAILABLE (Runtime Android / Virtual Provider)",
+        style = MaterialTheme.typography.labelSmall.copy(
+          fontFamily = FontFamily.Monospace,
+          fontSize = 9.sp,
+          fontWeight = FontWeight.SemiBold
+        ),
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
     }
 
     Row(
@@ -664,14 +752,14 @@ fun LocationDataDisplay(
 
       Column(modifier = Modifier.weight(1f)) {
         Text(
-          text = "PROVIDER",
+          text = "PROVIDER / SOURCE",
           style = MaterialTheme.typography.labelSmall.copy(
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant
           )
         )
         Text(
-          text = location.provider?.uppercase(Locale.ROOT) ?: "UNKNOWN",
+          text = location.locationSource,
           style = MaterialTheme.typography.bodyMedium.copy(
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.SemiBold
@@ -683,7 +771,7 @@ fun LocationDataDisplay(
 
     Column(modifier = Modifier.fillMaxWidth()) {
       Text(
-        text = "LOCATION FIX TIME (Waktu GPS)",
+        text = "LOCATION FIX TIME (${if (location.isFromCache) "Waktu Cache" else "Waktu Fix"})",
         style = MaterialTheme.typography.labelSmall.copy(
           fontWeight = FontWeight.Bold,
           color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -977,9 +1065,9 @@ fun AuditSummaryCard(events: List<String>, errorCount: Int) {
 }
 
 @Composable
-fun StateBadge(text: String, color: Color) {
+fun StateBadge(text: String, color: Color, modifier: Modifier = Modifier) {
   Box(
-    modifier = Modifier
+    modifier = modifier
       .clip(RoundedCornerShape(6.dp))
       .background(color.copy(alpha = 0.15f))
       .border(1.dp, color.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
@@ -993,5 +1081,180 @@ fun StateBadge(text: String, color: Color) {
       ),
       color = color
     )
+  }
+}
+
+/**
+ * Map Foundation Card (FIRE-005)
+ * Menampilkan integrasi peta geografis dengan posisi pengguna tanpa marker api palsu.
+ */
+@Composable
+fun MapFoundationCard(
+  state: DashboardState,
+  onOpenMap: () -> Unit
+) {
+  Card(
+    modifier = Modifier
+      .fillMaxWidth()
+      .testTag("map_status_card"),
+    colors = CardDefaults.cardColors(
+      containerColor = MaterialTheme.colorScheme.surface
+    ),
+    shape = RoundedCornerShape(12.dp),
+    border = androidx.compose.foundation.BorderStroke(
+      1.dp,
+      when (state.mapStatus) {
+        MapStatus.MAP_READY -> StatusVerified.copy(alpha = 0.5f)
+        MapStatus.MAP_ERROR -> StatusBlocked.copy(alpha = 0.5f)
+        MapStatus.MAP_LOADING -> MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+      }
+    )
+  ) {
+    Column(modifier = Modifier.padding(16.dp)) {
+      // Header
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Default.Map,
+            contentDescription = "Peta Geografis",
+            tint = when (state.mapStatus) {
+              MapStatus.MAP_READY -> StatusVerified
+              MapStatus.MAP_ERROR -> StatusBlocked
+              MapStatus.MAP_LOADING -> MaterialTheme.colorScheme.primary
+            },
+            modifier = Modifier.size(22.dp)
+          )
+          Text(
+            text = "PETA GEOGRAFIS (FIRE-005)",
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurface
+          )
+        }
+        StateBadge(
+          text = state.mapStatus.name,
+          color = when (state.mapStatus) {
+            MapStatus.MAP_READY -> StatusVerified
+            MapStatus.MAP_ERROR -> StatusBlocked
+            MapStatus.MAP_LOADING -> MaterialTheme.colorScheme.primary
+          },
+          modifier = Modifier.testTag("map_card_status_badge")
+        )
+      }
+
+      Spacer(modifier = Modifier.height(10.dp))
+
+      // Status Peta & Lokasi
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+      ) {
+        Column {
+          Text(
+            text = "MAP STATUS",
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+          )
+          Text(
+            text = state.mapStatus.name,
+            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold),
+            modifier = Modifier.testTag("map_status_text")
+          )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+          Text(
+            text = "LOCATION STATUS",
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+          )
+          Text(
+            text = state.locationStatus.name,
+            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold),
+            modifier = Modifier.testTag("map_location_status_text")
+          )
+        }
+      }
+
+      Spacer(modifier = Modifier.height(8.dp))
+
+      // Detail Koordinat jika lokasi tersedia
+      if (state.locationStatus == LocationStatus.LOCATION_AVAILABLE && state.deviceLocation != null) {
+        val loc = state.deviceLocation
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+          Column(modifier = Modifier.weight(1f)) {
+            Text(text = "LATITUDE", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant))
+            Text(
+              text = String.format(Locale.US, "%.6f°", loc.latitude),
+              style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+              modifier = Modifier.testTag("map_latitude_text")
+            )
+          }
+          Column(modifier = Modifier.weight(1f)) {
+            Text(text = "LONGITUDE", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant))
+            Text(
+              text = String.format(Locale.US, "%.6f°", loc.longitude),
+              style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+              modifier = Modifier.testTag("map_longitude_text")
+            )
+          }
+          Column(modifier = Modifier.weight(1f)) {
+            Text(text = "ACCURACY", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant))
+            Text(
+              text = if (loc.accuracyMeters != null) String.format(Locale.US, "±%.1fm", loc.accuracyMeters) else "N/A",
+              style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+              modifier = Modifier.testTag("map_accuracy_text")
+            )
+          }
+        }
+      } else {
+        Text(
+          text = "LOCATION NOT AVAILABLE — Posisi pengguna belum terhubung ke kamera peta.",
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.testTag("map_location_not_available_text")
+        )
+      }
+
+      Spacer(modifier = Modifier.height(10.dp))
+
+      Text(
+        text = "Provider: ${state.mapProviderName} | Credential: ${state.mapCredentialStatus}",
+        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+
+      Spacer(modifier = Modifier.height(4.dp))
+
+      Text(
+        text = "ZERO FIRE MARKERS — FIRE-006 s/d FIRE-008 NOT_STARTED",
+        style = MaterialTheme.typography.labelSmall.copy(
+          fontFamily = FontFamily.Monospace,
+          fontSize = 10.sp,
+          fontWeight = FontWeight.Bold
+        ),
+        color = StatusNotStarted
+      )
+
+      Spacer(modifier = Modifier.height(12.dp))
+
+      Button(
+        onClick = onOpenMap,
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("open_map_screen_button"),
+        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+      ) {
+        Icon(imageVector = Icons.Default.Map, contentDescription = null, modifier = Modifier.size(16.dp))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text("BUKA PETA GEOGRAFIS")
+      }
+    }
   }
 }

@@ -51,6 +51,23 @@ class DeviceLocationRobolectricTest {
     // Invalid non-positive timestamp
     assertFalse(DeviceLocation(latitude = 0.0, longitude = 0.0, timeMillis = 0L).isValid())
     assertFalse(DeviceLocation(latitude = 0.0, longitude = 0.0, timeMillis = -500L).isValid())
+
+    // Invalid NaN / Infinity (Prompt 005A Section 10)
+    assertFalse(DeviceLocation(latitude = Double.NaN, longitude = 0.0, timeMillis = 1000L).isValid())
+    assertFalse(DeviceLocation(latitude = 0.0, longitude = Double.POSITIVE_INFINITY, timeMillis = 1000L).isValid())
+  }
+
+  @Test
+  fun `test location source metadata and mock detection Prompt 005A`() {
+    val liveGps = DeviceLocation(latitude = -2.15, longitude = 114.55, timeMillis = 1000L, provider = "gps")
+    assertEquals("GPS", liveGps.locationSource)
+    assertFalse("Cloud container / emulator cannot claim real device verified", liveGps.isRealDeviceVerified)
+
+    val cachedGps = DeviceLocation(latitude = -2.15, longitude = 114.55, timeMillis = 1000L, provider = "gps", isFromCache = true)
+    assertEquals("CACHED (GPS)", cachedGps.locationSource)
+
+    val mockLoc = DeviceLocation(latitude = -2.15, longitude = 114.55, timeMillis = 1000L, provider = "gps", isMock = true)
+    assertEquals("MOCK_PROVIDER (UNVERIFIED)", mockLoc.locationSource)
   }
 
   @Test

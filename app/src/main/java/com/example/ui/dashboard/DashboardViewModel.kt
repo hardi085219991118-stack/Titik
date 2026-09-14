@@ -52,6 +52,10 @@ class DashboardViewModel(
     locationTracker.requestLocation(context)
   }
 
+  fun setMapStatus(status: com.example.ui.map.MapStatus) {
+    _uiState.value = _uiState.value.copy(mapStatus = status)
+  }
+
   override fun onCleared() {
     super.onCleared()
     locationTracker.stopTracking()

@@ -53,12 +53,22 @@ class ExampleRobolectricTest {
     assertEquals("Device GPS", fire004?.name)
     assertEquals(FeatureStatus.RUNTIME_VERIFIED, fire004?.status)
 
-    // Contract Section 13: JANGAN mengimplementasikan FIRE-005 sampai FIRE-008 pada tahap ini
-    listOf("FIRE-005", "FIRE-006", "FIRE-007", "FIRE-008").forEach { id ->
+    // Prompt 005A: FIRE-005 status must be REAL_DEVICE_VERIFICATION_PENDING (PRODUCTION_READY revoked)
+    val fire005 = FeatureRegistry.getFeature("FIRE-005")
+    assertNotNull(fire005)
+    assertEquals("Map Foundation", fire005?.name)
+    assertEquals(
+      "Feature FIRE-005 must be REAL_DEVICE_VERIFICATION_PENDING on Prompt 005A",
+      FeatureStatus.REAL_DEVICE_VERIFICATION_PENDING,
+      fire005?.status
+    )
+
+    // Contract Section 2 Prompt 005: FIRE-006 s/d FIRE-008 TETAP NOT_STARTED
+    listOf("FIRE-006", "FIRE-007", "FIRE-008").forEach { id ->
       val feat = FeatureRegistry.getFeature(id)
       assertNotNull(feat)
       assertEquals(
-        "Feature $id must strictly be NOT_STARTED on Prompt 004",
+        "Feature $id must strictly be NOT_STARTED on Prompt 005",
         FeatureStatus.NOT_STARTED,
         feat?.status
       )

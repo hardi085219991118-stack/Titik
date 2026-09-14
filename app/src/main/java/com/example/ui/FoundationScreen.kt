@@ -248,6 +248,7 @@ fun FeatureContractCard(feature: FeatureContract) {
     FeatureStatus.DATA_VERIFIED -> Pair(StatusVerified, Icons.Default.CheckCircle)
     FeatureStatus.PRODUCTION_READY -> Pair(StatusVerified, Icons.Default.CheckCircle)
     FeatureStatus.BLOCKED -> Pair(StatusBlocked, Icons.Default.Warning)
+    FeatureStatus.REAL_DEVICE_VERIFICATION_PENDING -> Pair(StatusImplementing, Icons.Default.Info)
   }
 
   Card(

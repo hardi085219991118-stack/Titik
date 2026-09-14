@@ -12,16 +12,35 @@ data class DeviceLocation(
   val provider: String? = null,
   val altitudeMeters: Double? = null,
   val speedMps: Float? = null,
-  val isFromCache: Boolean = false
+  val isFromCache: Boolean = false,
+  val isMock: Boolean = false,
+  val isRealDeviceVerified: Boolean = false
 ) {
   /**
-   * Section 17 Prompt 004: Location Sanity Check
-   * Validasi umum geografis dan fisik, BUKAN berdasarkan wilayah tertentu.
+   * Section 9 Prompt 005A: Location Source Metadata.
+   * Menampilkan asal provider secara eksplisit dan jujur:
+   * GPS, NETWORK, PASSIVE, FUSED, CACHED (...), MOCK, atau UNKNOWN.
+   */
+  val locationSource: String
+    get() = when {
+      isMock -> "MOCK_PROVIDER (UNVERIFIED)"
+      isFromCache -> "CACHED (${provider?.uppercase(java.util.Locale.ROOT) ?: "UNKNOWN"})"
+      provider.isNullOrBlank() -> "UNKNOWN"
+      else -> provider.uppercase(java.util.Locale.ROOT)
+    }
+
+  /**
+   * Section 10 Prompt 005A: Coordinate Range Sanity Check
+   * PERHATIAN: Validasi rentang matematis BUKANLAH bukti verifikasi perangkat fisik nyata!
    */
   fun isValid(): Boolean {
     return latitude in -90.0..90.0 &&
         longitude in -180.0..180.0 &&
         (accuracyMeters == null || accuracyMeters >= 0f) &&
-        timeMillis > 0
+        timeMillis > 0 &&
+        !latitude.isNaN() &&
+        !longitude.isNaN() &&
+        !latitude.isInfinite() &&
+        !longitude.isInfinite()
   }
 }

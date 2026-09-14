@@ -116,11 +116,21 @@ class AndroidLocationTracker(
         override fun onLocationChanged(location: Location) {
           cancelTimeout()
           val freshLoc = location.toDeviceLocation(isCache = false)
+          if (freshLoc.isMock) {
+            AppLogger.recordError(
+              AppError(
+                type = ErrorType.UNKNOWN_ERROR,
+                message = "CRITICAL: Mock location provider terdeteksi pada runtime (lat=${freshLoc.latitude}, lon=${freshLoc.longitude})",
+                source = "AndroidLocationTracker",
+                recoveryAction = "Nonaktifkan mock provider pada pengaturan developer perangkat."
+              )
+            )
+          }
           if (freshLoc.isValid()) {
             _currentLocation.value = freshLoc
             _locationStatus.value = LocationStatus.LOCATION_AVAILABLE
             _errorMessage.value = null
-            AppLogger.recordEvent("Real device location fix diterima: ${freshLoc.latitude}, ${freshLoc.longitude}, acc=±${freshLoc.accuracyMeters}m")
+            AppLogger.recordEvent("Fresh runtime location fix diterima: ${freshLoc.latitude}, ${freshLoc.longitude}, source=${freshLoc.locationSource}, acc=±${freshLoc.accuracyMeters}m")
           } else {
             _locationStatus.value = LocationStatus.LOCATION_ERROR
             _errorMessage.value = "Data lokasi tidak lolos sanity check geografis (-90..90, -180..180)."
@@ -221,6 +231,12 @@ class AndroidLocationTracker(
 }
 
 private fun Location.toDeviceLocation(isCache: Boolean): DeviceLocation {
+  val isMockLocation = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+    this.isMock
+  } else {
+    @Suppress("DEPRECATION")
+    this.isFromMockProvider
+  }
   return DeviceLocation(
     latitude = this.latitude,
     longitude = this.longitude,
@@ -229,6 +245,8 @@ private fun Location.toDeviceLocation(isCache: Boolean): DeviceLocation {
     provider = this.provider,
     altitudeMeters = if (this.hasAltitude()) this.altitude else null,
     speedMps = if (this.hasSpeed()) this.speed else null,
-    isFromCache = isCache
+    isFromCache = isCache,
+    isMock = isMockLocation,
+    isRealDeviceVerified = false // Virtual/cloud emulator cannot claim real device satellite fix
   )
 }
