@@ -37,7 +37,7 @@ object NasaFirmsConstants {
 
   // Hardi Mantangai reference query bounding box:
   // Note: Section 7 forbids hardcoded fire coordinates. Query bounding box is only for area bounds.
-  // Central Kalimantan / Hardi Mantangai region: West ~114.0, South ~-3.2, East ~115.0, North ~-2.0
-  const val DEFAULT_MANTHANGAI_BBOX = "114.0,-3.2,115.0,-2.0"
+  // Central Kalimantan / Hardi Mantangai region: West 113.5, South -3.5, East 115.0, North -2.0
+  const val DEFAULT_MANTHANGAI_BBOX = "113.5,-3.5,115.0,-2.0"
   const val DEFAULT_COUNTRY_CODE = "IDN"
 }

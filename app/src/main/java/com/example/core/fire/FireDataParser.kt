@@ -138,7 +138,8 @@ object FireDataParser {
       val track = if (trackIndex != -1) tokens.getOrNull(trackIndex)?.toDoubleOrNull() else null
       val satelliteRaw = if (satelliteIndex != -1) tokens.getOrNull(satelliteIndex)?.trim() else null
       val instrumentRaw = if (instrumentIndex != -1) tokens.getOrNull(instrumentIndex)?.trim() else null
-      val confidence = if (confidenceIndex != -1) tokens.getOrNull(confidenceIndex)?.trim() else null
+      val confidenceRaw = if (confidenceIndex != -1) tokens.getOrNull(confidenceIndex)?.trim() else null
+      val confidence = if (confidenceRaw.isNullOrBlank() || confidenceRaw.equals("null", ignoreCase = true) || confidenceRaw.equals("none", ignoreCase = true)) null else confidenceRaw
       val version = if (versionIndex != -1) tokens.getOrNull(versionIndex)?.trim() else null
       val frp = if (frpIndex != -1) {
         val f = tokens.getOrNull(frpIndex)?.toDoubleOrNull()

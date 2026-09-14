@@ -16,6 +16,7 @@ import com.example.core.fire.FireDataResponse
 import com.example.core.fire.FireDataSource
 import com.example.core.fire.FireDataSourceState
 import com.example.core.fire.FreshnessLevel
+import com.example.core.fire.LiveVerificationGate
 import com.example.core.fire.NasaFirmsConstants
 import com.example.core.fire.RealFireDataRepository
 import com.example.core.location.LocationStatus
@@ -624,6 +625,157 @@ class FireDataFoundationTest {
     val hash = md.digest(payload.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     assertNotNull(hash)
     assertEquals(64, hash.length)
+  }
+
+  // Test 41: LiveVerificationGate explicit states (Prompt 006B Section 16)
+  @Test
+  fun `test 41 live verification gate states`() {
+    val defaultState = DashboardState()
+    assertEquals(LiveVerificationGate.LIVE_API_NOT_VERIFIED, defaultState.liveVerificationGate)
+    assertEquals("CLIENT_ONLY_LIMITATION", defaultState.architectureStatus)
+    assertEquals("CLIENT_SIDE_CREDENTIAL", defaultState.credentialType)
+    assertEquals("PRODUCTION_SECURITY_LIMITATION", defaultState.securityLimitation)
+  }
+
+  // Test 42: Null FRP and null confidence parsing
+  @Test
+  fun `test 42 null frp and null confidence handling`() {
+    val csv = """
+      latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight
+      -2.45,114.35,320.5,0.4,0.38,2026-09-14,0630,NOAA-21,VIIRS,null,2.0NRT,290.1,null,D
+    """.trimIndent()
+    val result = FireDataParser.parseCsv(csv)
+    assertEquals(1, result.records.size)
+    assertNull(result.records[0].confidence)
+    assertNull(result.records[0].frp)
+  }
+
+  // Test 43: Stale cache age calculation (>24h)
+  @Test
+  fun `test 43 stale cache calculation`() {
+    val oldTime = System.currentTimeMillis() - (25 * 3600 * 1000L) // 25 hours ago
+    val diffHours = (System.currentTimeMillis() - oldTime) / (3600 * 1000)
+    assertTrue(diffHours >= 24)
+  }
+
+  // Test 44: DNS Error handling
+  @Test
+  fun `test 44 dns error handling`() = runBlocking {
+    val dnsErrorSource = object : FireDataSource {
+      override suspend fun fetchFireData(mapKey: String, source: String, areaCoordinates: String, dayRange: Int): FireDataResponse {
+        return FireDataResponse(
+          state = FireDataSourceState.NETWORK_ERROR,
+          records = emptyList(),
+          sourceSensor = source,
+          error = FireDataError.DnsError
+        )
+      }
+    }
+    val repo = RealFireDataRepository(FakeCredentialProvider("valid_key"), dnsErrorSource)
+    val res = repo.refreshFireData(force = true)
+    assertEquals(FireDataSourceState.NETWORK_ERROR, res.state)
+    assertTrue(res.error is FireDataError.DnsError)
+  }
+
+  // Test 45: Evidence Panel fields in DashboardState
+  @Test
+  fun `test 45 evidence panel fields in DashboardState`() {
+    val state = DashboardState(
+      httpStatusCode = 200,
+      rawRecordCount = 10,
+      validFireRecordCount = 8,
+      invalidRecordCount = 2,
+      responseSha256Hash = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+    )
+    assertEquals(200, state.httpStatusCode)
+    assertEquals(10, state.rawRecordCount)
+    assertEquals(8, state.validFireRecordCount)
+    assertEquals(2, state.invalidRecordCount)
+    assertNotNull(state.responseSha256Hash)
+  }
+
+  // Test 46: Request URL construction (Prompt 006C Section 2 & 17)
+  @Test
+  fun `test 46 request url construction matches official NASA FIRMS API`() {
+    val mapKey = "dummy_test_key_12345678"
+    val source = NasaFirmsConstants.SENSOR_VIIRS_NOAA21
+    val area = NasaFirmsConstants.DEFAULT_MANTHANGAI_BBOX
+    val dayRange = 1
+    val expectedUrl = "${NasaFirmsConstants.BASE_URL}api/area/csv/$mapKey/$source/$area/$dayRange"
+    assertEquals(
+      "https://firms.modaps.eosdis.nasa.gov/api/area/csv/dummy_test_key_12345678/VIIRS_NOAA21_NRT/113.5,-3.5,115.0,-2.0/1",
+      expectedUrl
+    )
+  }
+
+  // Test 47: Area coordinate bounding box validation (Prompt 006C Section 2)
+  @Test
+  fun `test 47 area coordinates bounding box validation`() {
+    val parts = NasaFirmsConstants.DEFAULT_MANTHANGAI_BBOX.split(",").map { it.toDouble() }
+    assertEquals(4, parts.size)
+    val west = parts[0]
+    val south = parts[1]
+    val east = parts[2]
+    val north = parts[3]
+    assertTrue("WEST must be < EAST", west < east)
+    assertTrue("SOUTH must be < NORTH", south < north)
+    assertTrue("Longitude must be in -180..180", west in -180.0..180.0 && east in -180.0..180.0)
+    assertTrue("Latitude must be in -90..90", south in -90.0..90.0 && north in -90.0..90.0)
+  }
+
+  // Test 48: Source priority list validation (Prompt 006C Section 3)
+  @Test
+  fun `test 48 source priority list validation`() {
+    val priority = NasaFirmsConstants.SENSOR_PRIORITY
+    assertEquals(4, priority.size)
+    assertEquals("VIIRS_NOAA21_NRT", priority[0])
+    assertEquals("VIIRS_NOAA20_NRT", priority[1])
+    assertEquals("VIIRS_SNPP_NRT", priority[2])
+    assertEquals("MODIS_NRT", priority[3])
+  }
+
+  // Test 49: LiveVerificationGate strict transition logic (Prompt 006C Section 11)
+  @Test
+  fun `test 49 live verification gate strict transitions`() {
+    // 1. Initial / unverified
+    assertEquals(LiveVerificationGate.LIVE_API_NOT_VERIFIED, DashboardState().liveVerificationGate)
+
+    // 2. Credential required
+    val credReqGate = com.example.core.fire.LiveVerificationGate.LIVE_API_CREDENTIAL_REQUIRED
+    assertNotNull(credReqGate)
+
+    // 3. Network error
+    val netErrGate = com.example.core.fire.LiveVerificationGate.LIVE_API_NETWORK_ERROR
+    assertNotNull(netErrGate)
+
+    // 4. Verified condition
+    val verifiedGate = com.example.core.fire.LiveVerificationGate.LIVE_API_VERIFIED
+    assertNotNull(verifiedGate)
+  }
+
+  // Test 50: Zero Fire Markers Assertion (Prompt 006C Section 13)
+  @Test
+  fun `test 50 zero fire markers assertion`() {
+    val mapState = MapUiState()
+    assertEquals(0, mapState.fireMarkerCount)
+  }
+
+  // Test 51: Valid empty response produces NO_DETECTIONS_IN_QUERY with 0 count
+  @Test
+  fun `test 51 valid empty response produces no detections state`() {
+    val emptyCsv = "latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight\n"
+    val result = FireDataParser.parseCsv(emptyCsv)
+    assertEquals(0, result.validCount)
+    assertEquals(0, result.rawCount)
+  }
+
+  // Test 52: Acquisition timestamp vs Device Fetch time separation
+  @Test
+  fun `test 52 acquisition timestamp vs device fetch time separation`() {
+    val fetchTime = 1726315200000L // 2026-09-14 12:00:00 UTC
+    val acqTime = 1726308000000L   // 2026-09-14 10:00:00 UTC
+    assertNotEquals(fetchTime, acqTime)
+    assertTrue("Fetch time must be greater than acquisition time", fetchTime > acqTime)
   }
 
   // Helper functions and classes

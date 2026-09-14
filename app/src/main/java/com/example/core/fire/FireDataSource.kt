@@ -41,9 +41,11 @@ class NasaFirmsNetworkDataSource(
     dayRange: Int
   ): FireDataResponse = withContext(Dispatchers.IO) {
     val requestTime = System.currentTimeMillis()
+    AppLogger.recordEvent("NASA_FIRMS_REQUEST_STARTED: sensor=$source, area=$areaCoordinates, dayRange=$dayRange")
 
     // Validate MAP_KEY before initiating network call
     if (mapKey.isBlank()) {
+      AppLogger.recordEvent("NASA_FIRMS_REQUEST_ABORTED: MAP_KEY is missing/blank")
       return@withContext FireDataResponse.error(
         state = FireDataSourceState.API_CREDENTIAL_REQUIRED,
         error = FireDataError.MissingCredential,
@@ -55,19 +57,23 @@ class NasaFirmsNetworkDataSource(
     // Official NASA FIRMS Endpoint:
     // https://firms.modaps.eosdis.nasa.gov/api/area/csv/[MAP_KEY]/[SOURCE]/[AREA_COORDINATES]/[DAY_RANGE]
     val url = "${NasaFirmsConstants.BASE_URL}api/area/csv/$mapKey/$source/$areaCoordinates/$dayRange"
-
-    AppLogger.recordEvent("Initiating NASA FIRMS query for sensor $source")
+    AppLogger.recordEvent("NASA_FIRMS_REQUEST_URL_BUILT: endpoint=api/area/csv/[REDACTED_MAP_KEY]/$source/$areaCoordinates/$dayRange")
 
     val request = Request.Builder()
       .url(url)
       .header("User-Agent", "HardiMantangaiFire/1.0 (Android; ZeroDummy)")
       .build()
 
+    AppLogger.recordEvent("NASA_FIRMS_REQUEST_SENT: source=$source area=$areaCoordinates dayRange=$dayRange")
+
     try {
       val response = okHttpClient.newCall(request).execute()
       val fetchTime = System.currentTimeMillis()
       val statusCode = response.code
       val responseBody = response.body?.string()
+      val byteCount = responseBody?.length ?: 0
+
+      AppLogger.recordEvent("NASA_FIRMS_RESPONSE_RECEIVED: httpStatus=$statusCode bytes=$byteCount")
 
       // Calculate SHA-256 hash of response for internal verification audit (zero credential leak)
       val responseHash = try {
@@ -161,6 +167,8 @@ class NasaFirmsNetworkDataSource(
         )
       }
 
+      AppLogger.recordEvent("NASA_FIRMS_RESPONSE_VALIDATED: httpStatus=$statusCode, isSuccessful=${response.isSuccessful}")
+
       // Parse CSV Response
       val parseResult = try {
         val instrument = if (source.contains("VIIRS", ignoreCase = true)) "VIIRS" else "MODIS"
@@ -200,6 +208,8 @@ class NasaFirmsNetworkDataSource(
         )
       }
 
+      AppLogger.recordEvent("NASA_FIRMS_RESPONSE_PARSED: validRecords=${parseResult.validCount}, rawRecords=${parseResult.rawCount}, invalidRecords=${parseResult.invalidCount}")
+
       // Calculate Freshness
       val freshness = calculateFreshness(parseResult.records, fetchTime)
 
@@ -220,9 +230,7 @@ class NasaFirmsNetworkDataSource(
         FireDataSourceState.DATA_SOURCE_AVAILABLE
       }
 
-      AppLogger.recordEvent(
-        "NASA FIRMS response parsed successfully. Status=$state, Valid=${parseResult.validCount}, Invalid=${parseResult.invalidCount}"
-      )
+      AppLogger.recordEvent("NASA_FIRMS_LIVE_GATE_UPDATED: state=$state")
 
       return@withContext FireDataResponse(
         state = state,

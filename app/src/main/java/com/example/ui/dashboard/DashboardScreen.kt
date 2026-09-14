@@ -335,6 +335,10 @@ fun DashboardScreen(
       }
 
       item {
+        NasaFirmsEvidenceCard(state = state)
+      }
+
+      item {
         RefreshSection(
           state = state,
           onRefreshSatellite = onRefreshSatellite
@@ -1263,6 +1267,162 @@ fun LastUpdateCard(state: DashboardState) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
       )
+    }
+  }
+}
+
+@Composable
+fun NasaFirmsEvidenceCard(state: DashboardState) {
+  val isVerified = state.liveVerificationGate == com.example.core.fire.LiveVerificationGate.LIVE_API_VERIFIED
+  val badgeColor = if (isVerified) StatusVerified else StatusNotStarted
+
+  Card(
+    modifier = Modifier
+      .fillMaxWidth()
+      .testTag("nasa_firms_evidence_card"),
+    colors = CardDefaults.cardColors(
+      containerColor = MaterialTheme.colorScheme.surface
+    ),
+    shape = RoundedCornerShape(12.dp),
+    border = androidx.compose.foundation.BorderStroke(
+      1.dp,
+      MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+    )
+  ) {
+    Column(modifier = Modifier.padding(16.dp)) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Default.Shield,
+            contentDescription = "Evidence Panel",
+            tint = badgeColor,
+            modifier = Modifier.size(20.dp)
+          )
+          Text(
+            text = "EVIDENCE: NASA FIRMS",
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurface
+          )
+        }
+        StateBadge(
+          text = if (isVerified) "VERIFIED" else "NOT VERIFIED",
+          color = badgeColor
+        )
+      }
+
+      Spacer(modifier = Modifier.height(10.dp))
+
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .clip(RoundedCornerShape(6.dp))
+          .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+          .padding(8.dp)
+      ) {
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+          Text(
+            text = "GATE: ${state.liveVerificationGate.name}",
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+            color = if (isVerified) StatusVerified else MaterialTheme.colorScheme.primary
+          )
+          Text(
+            text = "HTTP STATUS: ${state.httpStatusCode ?: "N/A"} | SENSOR: ${state.satelliteSensorName}",
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+          Text(
+            text = "AREA BBOX: ${state.queryArea} | DAY RANGE: ${state.dayRange}",
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+        }
+      }
+
+      Spacer(modifier = Modifier.height(8.dp))
+
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Column(modifier = Modifier.weight(1f)) {
+          Text("RAW RECORDS", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant))
+          Text(
+            text = state.rawRecordCount.toString(),
+            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+          )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+          Text("VALID RECORDS", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant))
+          Text(
+            text = state.validFireRecordCount?.toString() ?: "N/A",
+            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+          )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+          Text("INVALID RECORDS", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant))
+          Text(
+            text = state.invalidRecordCount.toString(),
+            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+          )
+        }
+      }
+
+      HorizontalDivider(
+        modifier = Modifier.padding(vertical = 8.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+      )
+
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+          text = "FETCH TIME: ${state.lastFetchDisplay}",
+          style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp),
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+          text = "SATELLITE ACQUISITION: ${state.acquisitionRangeDisplay}",
+          style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp),
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+          text = "DATA AGE: ${state.dataAgeDisplay} | FRESHNESS: ${state.freshnessLevel.name}",
+          style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp),
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+          text = "SATELLITE DIST: ${state.satelliteDistributionDisplay}",
+          style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp),
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+          text = "INSTRUMENT DIST: ${state.instrumentDistributionDisplay}",
+          style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp),
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+          text = "CREDENTIAL: ${state.credentialState.name} (${state.credentialType})",
+          style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp),
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+          text = "SECURITY: ${state.securityLimitation} (${state.architectureStatus})",
+          style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 9.sp),
+          color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+        )
+        if (state.responseSha256Hash != null) {
+          Text(
+            text = "RESPONSE SHA-256: ${state.responseSha256Hash}",
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 9.sp),
+            color = MaterialTheme.colorScheme.primary
+          )
+        }
+      }
     }
   }
 }

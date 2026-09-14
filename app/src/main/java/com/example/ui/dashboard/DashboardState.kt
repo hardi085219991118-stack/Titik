@@ -62,10 +62,19 @@ data class DashboardState(
   val isLoadingSatellite: Boolean = false,
   val refreshSatelliteNote: String = "Tekan untuk memperbarui data satelit NASA FIRMS.",
 
-  // Security Architecture & Evidence Audit (Prompt 006B Section 5, 6, 13)
+  // Security Architecture & Evidence Audit (Prompt 006B Section 5, 6, 11, 13, 16)
   val architectureStatus: String = "CLIENT_ONLY_LIMITATION",
   val credentialType: String = "CLIENT_SIDE_CREDENTIAL",
   val securityLimitation: String = "PRODUCTION_SECURITY_LIMITATION",
+  val liveVerificationGate: com.example.core.fire.LiveVerificationGate = com.example.core.fire.LiveVerificationGate.LIVE_API_NOT_VERIFIED,
   val responseSha256Hash: String? = null,
-  val rawRecordCount: Int = 0
+  val rawRecordCount: Int = 0,
+  val invalidRecordCount: Int = 0,
+  val httpStatusCode: Int? = null,
+  val queryArea: String = com.example.core.fire.NasaFirmsConstants.DEFAULT_MANTHANGAI_BBOX,
+  val dayRange: Int = 1,
+  val acquisitionRangeDisplay: String = "BELUM TERSEDIA",
+  val satelliteDistributionDisplay: String = "BELUM TERSEDIA",
+  val instrumentDistributionDisplay: String = "BELUM TERSEDIA",
+  val dataAgeDisplay: String = "BELUM TERSEDIA"
 )

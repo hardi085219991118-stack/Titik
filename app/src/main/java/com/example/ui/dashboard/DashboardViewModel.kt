@@ -279,7 +279,81 @@ class DashboardViewModel(
       )
     }
 
-    _uiState.value = newState
+    val gate = when {
+      credState == FireDataCredentialState.NOT_CONFIGURED || credState == FireDataCredentialState.INVALID ->
+        com.example.core.fire.LiveVerificationGate.LIVE_API_CREDENTIAL_REQUIRED
+      sourceState == FireDataSourceState.NETWORK_ERROR || sourceState == FireDataSourceState.TIMEOUT ->
+        com.example.core.fire.LiveVerificationGate.LIVE_API_NETWORK_ERROR
+      sourceState == FireDataSourceState.INVALID_DATA_RESPONSE ->
+        com.example.core.fire.LiveVerificationGate.LIVE_API_INVALID_RESPONSE
+      sourceState == FireDataSourceState.DATA_SOURCE_AVAILABLE || sourceState == FireDataSourceState.NO_DETECTIONS_IN_QUERY -> {
+        if (response.httpStatusCode == 200 && !response.isCached) {
+          com.example.core.fire.LiveVerificationGate.LIVE_API_VERIFIED
+        } else {
+          com.example.core.fire.LiveVerificationGate.LIVE_API_NOT_VERIFIED
+        }
+      }
+      sourceState == FireDataSourceState.DATA_SOURCE_UNAVAILABLE || sourceState == FireDataSourceState.RATE_LIMIT_EXCEEDED ->
+        com.example.core.fire.LiveVerificationGate.LIVE_API_ERROR
+      else -> com.example.core.fire.LiveVerificationGate.LIVE_API_NOT_VERIFIED
+    }
+
+    val dataAgeDisplay = if (response.records.isNotEmpty() && response.fetchTimeMillis > 0) {
+      val latestAcq = response.records.mapNotNull { it.acquisitionTimestampMillis }.maxOrNull()
+      if (latestAcq != null) {
+        val diffMs = response.fetchTimeMillis - latestAcq
+        if (diffMs >= 0) {
+          val hours = diffMs / (1000 * 60 * 60)
+          val minutes = (diffMs % (1000 * 60 * 60)) / (1000 * 60)
+          "${hours}j ${minutes}m"
+        } else {
+          "UNKNOWN"
+        }
+      } else {
+        "BELUM TERSEDIA"
+      }
+    } else {
+      "BELUM TERSEDIA"
+    }
+
+    val acqRangeDisplay = if (response.minAcquisitionTimeMillis != null && response.maxAcquisitionTimeMillis != null) {
+      val minStr = utcDateFormat.format(Date(response.minAcquisitionTimeMillis))
+      val maxStr = utcDateFormat.format(Date(response.maxAcquisitionTimeMillis))
+      if (minStr == maxStr) minStr else "$minStr s/d $maxStr"
+    } else if (firstRecord != null) {
+      formattedAcqTime
+    } else {
+      "BELUM TERSEDIA"
+    }
+
+    val satDistDisplay = if (response.satelliteDistribution.isNotEmpty()) {
+      response.satelliteDistribution.entries.joinToString(", ") { "${it.key}: ${it.value}" }
+    } else if (firstRecord?.satellite != null) {
+      firstRecord.satellite
+    } else {
+      "BELUM TERSEDIA"
+    }
+
+    val instDistDisplay = if (response.instrumentDistribution.isNotEmpty()) {
+      response.instrumentDistribution.entries.joinToString(", ") { "${it.key}: ${it.value}" }
+    } else if (firstRecord?.instrument != null) {
+      firstRecord.instrument
+    } else {
+      "BELUM TERSEDIA"
+    }
+
+    _uiState.value = newState.copy(
+      liveVerificationGate = gate,
+      httpStatusCode = response.httpStatusCode,
+      invalidRecordCount = response.invalidRecordCount,
+      queryArea = response.requestArea,
+      dayRange = response.requestDayRange,
+      acquisitionRangeDisplay = acqRangeDisplay,
+      satelliteDistributionDisplay = satDistDisplay,
+      instrumentDistributionDisplay = instDistDisplay,
+      dataAgeDisplay = dataAgeDisplay,
+      responseSha256Hash = response.responseSha256Hash
+    )
   }
 
   fun requestLocation(context: Context) {
