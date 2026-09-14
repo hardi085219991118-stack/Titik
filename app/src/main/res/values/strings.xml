@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">HARDI MANTANGAI FIRE NOW</string>
+    <string name="contract_title">MASTER DEVELOPMENT CONTRACT</string>
+    <string name="contract_subtitle">ZERO-DUMMY / EVIDENCE-BASED</string>
+    <string name="rule_code_not_verified">CODE ≠ VERIFIED</string>
+    <string name="rule_ui_not_feature">UI ≠ FEATURE</string>
+    <string name="rule_dummy_not_real">DATA DUMMY ≠ DATA NYATA</string>
+    <string name="status_source_not_verified">DATA SOURCE NOT VERIFIED</string>
+    <string name="status_location_not_available">LOCATION_NOT_AVAILABLE</string>
+    <string name="no_verified_fire_data">Tidak ada data titik api yang terverifikasi.</string>
+</resources>

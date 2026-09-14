@@ -1,0 +1,6 @@
+{
+  "name": "HARDI MANTANGAI FIRE NOW",
+  "description": "Aplikasi monitoring titik api/hotspot berbasis data nyata Hardi Mantangai - Zero Dummy & Evidence-Based.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
