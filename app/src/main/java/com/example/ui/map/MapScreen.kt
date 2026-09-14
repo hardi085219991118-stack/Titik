@@ -335,7 +335,8 @@ fun MapScreen(
                   title = when {
                     deviceLocation.isMock -> "MOCK LOCATION (UNVERIFIED)"
                     deviceLocation.runtimeEnvironment == RuntimeEnvironment.EMULATOR ||
-                    deviceLocation.runtimeEnvironment == RuntimeEnvironment.VIRTUAL_DEVICE -> "VIRTUAL TEST LOCATION"
+                    deviceLocation.runtimeEnvironment == RuntimeEnvironment.VIRTUAL_DEVICE ||
+                    deviceLocation.runtimeEnvironment == RuntimeEnvironment.CLOUD_CONTAINER -> "VIRTUAL TEST LOCATION"
                     deviceLocation.isFromCache -> "CACHED LOCATION"
                     deviceLocation.verificationLevel == LocationVerificationLevel.REAL_DEVICE_VERIFIED -> "REAL DEVICE LOCATION"
                     else -> "LOKASI PERANGKAT (${deviceLocation.locationSource})"
@@ -528,6 +529,7 @@ fun UserLocationInfoCard(
       location?.isFromCache == true -> "LOCATION: CACHED LOCATION"
       location?.runtimeEnvironment == RuntimeEnvironment.EMULATOR -> "RUNTIME: EMULATOR (VIRTUAL TEST LOCATION)"
       location?.runtimeEnvironment == RuntimeEnvironment.VIRTUAL_DEVICE -> "RUNTIME: VIRTUAL DEVICE (VIRTUAL TEST LOCATION)"
+      location?.runtimeEnvironment == RuntimeEnvironment.CLOUD_CONTAINER -> "RUNTIME: CLOUD CONTAINER (VIRTUAL TEST LOCATION)"
       location != null -> "REAL DEVICE: NOT VERIFIED"
       else -> "MAP INITIAL VIEW"
     }
@@ -676,9 +678,9 @@ fun UserLocationInfoCard(
             Column {
               Text(
                 text = if (location.verificationLevel == LocationVerificationLevel.REAL_DEVICE_VERIFIED) {
-                  "REAL DEVICE: VERIFIED (Perangkat Fisik Nyata Terkonfirmasi)"
+                  "REAL DEVICE: VERIFIED (Perangkat Fisik Nyata Terkonfirmasi Lapangan)"
                 } else {
-                  "REAL DEVICE: NOT VERIFIED (Real Device GPS verification is pending)"
+                  "REAL DEVICE: NOT VERIFIED (Verifikasi fisik manual lapangan belum dilakukan)"
                 },
                 style = MaterialTheme.typography.labelSmall.copy(
                   fontFamily = FontFamily.Monospace,
@@ -688,7 +690,7 @@ fun UserLocationInfoCard(
                 color = if (location.verificationLevel == LocationVerificationLevel.REAL_DEVICE_VERIFIED) StatusVerified else MaterialTheme.colorScheme.onSurfaceVariant
               )
               Text(
-                text = "RUNTIME: ${location.runtimeEnvironment.name} (Virtual Provider / Cloud Container)",
+                text = "RUNTIME: ${location.runtimeEnvironment.displayName} (${location.runtimeEnvironment.description})",
                 style = MaterialTheme.typography.labelSmall.copy(
                   fontFamily = FontFamily.Monospace,
                   fontSize = 9.sp,

@@ -122,7 +122,12 @@ class AndroidLocationTracker(
         val cachedLoc = lastKnown.toDeviceLocation(isCache = true)
         if (cachedLoc.isValid()) {
           _currentLocation.value = cachedLoc
-          AppLogger.recordEvent("Cached location dimuat: lat=${cachedLoc.latitude}, lon=${cachedLoc.longitude}, time=${cachedLoc.timeMillis}")
+          AppLogger.recordEvent(
+            "Cached location fix received: lat=${cachedLoc.latitude}, lon=${cachedLoc.longitude}, " +
+            "accuracy=${cachedLoc.accuracyMeters}m, source=${cachedLoc.locationSource}, " +
+            "timestamp=${cachedLoc.timeMillis}, mock=${cachedLoc.isMock}, " +
+            "runtime=${cachedLoc.runtimeEnvironment}, verification=${cachedLoc.verificationLevel}"
+          )
         }
       }
 
@@ -240,7 +245,12 @@ class AndroidLocationTracker(
       _currentLocation.value = freshLoc
       _locationStatus.value = LocationStatus.LOCATION_AVAILABLE
       _errorMessage.value = null
-      AppLogger.recordEvent("Fresh location fix diterima: ${freshLoc.latitude}, ${freshLoc.longitude}, source=${freshLoc.locationSource}, verification=${freshLoc.verificationLevel}")
+      AppLogger.recordEvent(
+        "Fresh location fix received: lat=${freshLoc.latitude}, lon=${freshLoc.longitude}, " +
+        "accuracy=${freshLoc.accuracyMeters}m, source=${freshLoc.locationSource}, " +
+        "timestamp=${freshLoc.timeMillis}, mock=${freshLoc.isMock}, " +
+        "runtime=${freshLoc.runtimeEnvironment}, verification=${freshLoc.verificationLevel}"
+      )
     } else {
       _locationStatus.value = LocationStatus.LOCATION_ERROR
       _errorMessage.value = "Data lokasi tidak lolos sanity check geografis (-90..90, -180..180)."
@@ -302,13 +312,12 @@ fun Location.toDeviceLocation(
     (System.currentTimeMillis() - this.time) > 15 * 60 * 1000L
   } else false
 
-  val verificationLevel = when {
-    isMockLocation -> LocationVerificationLevel.MOCK
-    runtimeEnv == RuntimeEnvironment.EMULATOR || runtimeEnv == RuntimeEnvironment.VIRTUAL_DEVICE -> LocationVerificationLevel.VIRTUAL
-    isCache || isStaleLocation -> LocationVerificationLevel.CACHED
-    runtimeEnv == RuntimeEnvironment.REAL_PHYSICAL_DEVICE -> LocationVerificationLevel.REAL_DEVICE_UNVERIFIED
-    else -> LocationVerificationLevel.UNVERIFIED
-  }
+  val verificationLevel = DeviceLocation.resolveVerificationLevel(
+    isMock = isMockLocation,
+    isFromCache = isCache || isStaleLocation,
+    runtimeEnvironment = runtimeEnv,
+    isRealDeviceVerified = false // Physical verification pending manual field confirmation
+  )
 
   return DeviceLocation(
     latitude = this.latitude,

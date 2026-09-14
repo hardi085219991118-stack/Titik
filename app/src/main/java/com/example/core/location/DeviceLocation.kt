@@ -32,10 +32,12 @@ data class DeviceLocation(
     ): LocationVerificationLevel = when {
       isMock -> LocationVerificationLevel.MOCK
       runtimeEnvironment == RuntimeEnvironment.EMULATOR ||
-        runtimeEnvironment == RuntimeEnvironment.VIRTUAL_DEVICE -> LocationVerificationLevel.VIRTUAL
+        runtimeEnvironment == RuntimeEnvironment.VIRTUAL_DEVICE ||
+        runtimeEnvironment == RuntimeEnvironment.CLOUD_CONTAINER -> LocationVerificationLevel.VIRTUAL
       isFromCache -> LocationVerificationLevel.CACHED
       isRealDeviceVerified && runtimeEnvironment == RuntimeEnvironment.REAL_PHYSICAL_DEVICE -> LocationVerificationLevel.REAL_DEVICE_VERIFIED
       runtimeEnvironment == RuntimeEnvironment.REAL_PHYSICAL_DEVICE -> LocationVerificationLevel.REAL_DEVICE_UNVERIFIED
+      runtimeEnvironment == RuntimeEnvironment.UNKNOWN -> LocationVerificationLevel.UNKNOWN
       else -> LocationVerificationLevel.UNVERIFIED
     }
   }

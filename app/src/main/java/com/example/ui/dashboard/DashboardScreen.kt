@@ -361,8 +361,9 @@ fun RealLocationCard(
           state.deviceLocation?.verificationLevel == LocationVerificationLevel.REAL_DEVICE_VERIFIED -> "REAL DEVICE: VERIFIED"
           state.deviceLocation?.isMock == true -> "LOCATION: MOCK LOCATION"
           state.deviceLocation?.isFromCache == true -> "LOCATION: CACHED LOCATION"
-          state.deviceLocation?.runtimeEnvironment == RuntimeEnvironment.EMULATOR -> "RUNTIME: EMULATOR"
+          state.deviceLocation?.runtimeEnvironment == RuntimeEnvironment.EMULATOR -> "RUNTIME: EMULATOR (VIRTUAL)"
           state.deviceLocation?.runtimeEnvironment == RuntimeEnvironment.VIRTUAL_DEVICE -> "RUNTIME: VIRTUAL DEVICE"
+          state.deviceLocation?.runtimeEnvironment == RuntimeEnvironment.CLOUD_CONTAINER -> "RUNTIME: CLOUD CONTAINER"
           state.locationStatus == LocationStatus.LOCATION_AVAILABLE -> "REAL DEVICE: NOT VERIFIED"
           else -> "LOKASI PERANGKAT"
         }
@@ -704,9 +705,9 @@ fun LocationDataDisplay(
       Column {
         Text(
           text = if (location.verificationLevel == LocationVerificationLevel.REAL_DEVICE_VERIFIED) {
-            "REAL DEVICE: VERIFIED (Perangkat Fisik Nyata Terkonfirmasi)"
+            "REAL DEVICE: VERIFIED (Perangkat Fisik Nyata Terkonfirmasi Lapangan)"
           } else {
-            "REAL DEVICE: NOT VERIFIED (Real Device GPS verification is pending)"
+            "REAL DEVICE: NOT VERIFIED (Verifikasi fisik manual lapangan belum dilakukan)"
           },
           style = MaterialTheme.typography.labelSmall.copy(
             fontFamily = FontFamily.Monospace,
@@ -716,7 +717,7 @@ fun LocationDataDisplay(
           color = if (location.verificationLevel == LocationVerificationLevel.REAL_DEVICE_VERIFIED) StatusVerified else MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-          text = "RUNTIME: ${location.runtimeEnvironment.name} (Virtual Provider / Cloud Container)",
+          text = "RUNTIME: ${location.runtimeEnvironment.displayName} (${location.runtimeEnvironment.description})",
           style = MaterialTheme.typography.labelSmall.copy(
             fontFamily = FontFamily.Monospace,
             fontSize = 9.sp,

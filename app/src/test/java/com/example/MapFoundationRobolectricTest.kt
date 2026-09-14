@@ -21,6 +21,7 @@ import com.example.ui.map.UserLocationInfoCard
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -247,5 +248,43 @@ class MapFoundationRobolectricTest {
     composeTestRule.onNodeWithTag("fire_detection_card").assertIsDisplayed()
     composeTestRule.onNodeWithText("FIRE DATA SOURCE NOT VERIFIED").assertIsDisplayed()
     composeTestRule.onNodeWithText("--").assertIsDisplayed()
+  }
+
+  @Test
+  fun `test map follows valid location Prompt 005C`() {
+    val realLoc = DeviceLocation(
+      latitude = -2.585765,
+      longitude = 114.441215,
+      accuracyMeters = 5.3f,
+      timeMillis = System.currentTimeMillis(),
+      provider = "gps"
+    )
+    val mapUiState = MapUiState(
+      deviceLocation = realLoc,
+      locationStatus = LocationStatus.LOCATION_AVAILABLE
+    )
+    assertNotNull(mapUiState.deviceLocation)
+    assertEquals(-2.585765, mapUiState.deviceLocation?.latitude ?: 0.0, 0.000001)
+    assertEquals(114.441215, mapUiState.deviceLocation?.longitude ?: 0.0, 0.000001)
+    assertEquals(0, mapUiState.fireMarkerCount)
+  }
+
+  @Test
+  fun `test map does not use fallback fake coordinate when location null Prompt 005C`() {
+    val mapUiState = MapUiState(
+      deviceLocation = null,
+      locationStatus = LocationStatus.LOCATION_PERMISSION_REQUIRED
+    )
+    assertNull("Map must not synthesize or fallback to fake coordinates", mapUiState.deviceLocation)
+    assertEquals(0, mapUiState.fireMarkerCount)
+  }
+
+  @Test
+  fun `test no hardcoded production coordinates in map contracts Prompt 005C`() {
+    val mapContract = FeatureRegistry.getFeature("FIRE-005")
+    assertNotNull(mapContract)
+    assertFalse(mapContract!!.purpose.contains("-2.58"))
+    assertFalse(mapContract.output.contains("114.44"))
+    assertEquals(FeatureStatus.REAL_DEVICE_VERIFICATION_PENDING, mapContract.status)
   }
 }

@@ -70,7 +70,7 @@ object FeatureRegistry {
       testProcedure = "Unit test permission flow & provider state, Robolectric sanity check, Compose UI test",
       verificationLevel = "GATE 2: REAL_DEVICE_VERIFICATION_PENDING (REAL DEVICE GPS NOT VERIFIED)",
       status = FeatureStatus.REAL_DEVICE_VERIFICATION_PENDING,
-      knownLimitations = "REAL DEVICE GPS NOT VERIFIED: Aplikasi diuji di lingkungan emulator / cloud container. Koordinat yang diterima berasal dari virtual location provider emulator, bukan GPS satelit fisik nyata. Memerlukan verifikasi pada perangkat fisik nyata."
+      knownLimitations = "REAL DEVICE GPS NOT VERIFIED: APK telah diuji pada perangkat fisik Android dan memperoleh koordinat GPS riil. Namun status formal REAL_DEVICE_VERIFIED tetap ditahan sebagai REAL_DEVICE_VERIFICATION_PENDING sampai verifikasi fisik manual lapangan (13 kriteria Prompt 005C) ditandatangani secara resmi."
     ),
     FeatureContract(
       id = "FIRE-005",
@@ -86,7 +86,7 @@ object FeatureRegistry {
       testProcedure = "Robolectric MapFoundationRobolectricTest, CoordinateValidator boundary test, MapStatus lifecycle test, Dashboard integration test",
       verificationLevel = "GATE 2: REAL_DEVICE_VERIFICATION_PENDING (REAL DEVICE GPS NOT VERIFIED)",
       status = FeatureStatus.REAL_DEVICE_VERIFICATION_PENDING,
-      knownLimitations = "REAL DEVICE GPS NOT VERIFIED: Aplikasi diuji di lingkungan emulator/cloud container. Koordinat yang diterima berasal dari virtual location provider emulator, bukan GPS satelit fisik. Memerlukan verifikasi pada perangkat fisik nyata."
+      knownLimitations = "REAL DEVICE GPS NOT VERIFIED: APK telah diuji pada perangkat fisik Android dan peta memusatkan marker pada koordinat GPS riil pengguna. Status formal verifikasi lapangan fisik tetap REAL_DEVICE_VERIFICATION_PENDING hingga 13 kriteria audit Prompt 005C terpenuhi."
     ),
     FeatureContract(
       id = "FIRE-006",

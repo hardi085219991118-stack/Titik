@@ -18,7 +18,26 @@ enum class RuntimeEnvironment {
   REAL_PHYSICAL_DEVICE,
   EMULATOR,
   VIRTUAL_DEVICE,
+  CLOUD_CONTAINER,
   UNKNOWN;
+
+  val displayName: String
+    get() = when (this) {
+      REAL_PHYSICAL_DEVICE -> "REAL_PHYSICAL_DEVICE"
+      EMULATOR -> "EMULATOR"
+      VIRTUAL_DEVICE -> "VIRTUAL_DEVICE"
+      CLOUD_CONTAINER -> "CLOUD_CONTAINER"
+      UNKNOWN -> "UNKNOWN"
+    }
+
+  val description: String
+    get() = when (this) {
+      REAL_PHYSICAL_DEVICE -> "Hardware Perangkat Fisik Terdeteksi"
+      EMULATOR -> "Android Virtual Device (AVD / QEMU)"
+      VIRTUAL_DEVICE -> "Virtual Device / Virtualized OS"
+      CLOUD_CONTAINER -> "Cloud Container Environment"
+      UNKNOWN -> "Lingkungan Belum Teridentifikasi"
+    }
 
   companion object {
     fun detect(): RuntimeEnvironment {
@@ -29,6 +48,9 @@ enum class RuntimeEnvironment {
       val product = Build.PRODUCT.orEmpty().lowercase()
       val brand = Build.BRAND.orEmpty().lowercase()
       val device = Build.DEVICE.orEmpty().lowercase()
+      val host = Build.HOST.orEmpty().lowercase()
+
+      val isRobolectric = fingerprint.contains("robolectric")
 
       val isEmulator = fingerprint.startsWith("generic") ||
           fingerprint.startsWith("unknown") ||
@@ -44,16 +66,19 @@ enum class RuntimeEnvironment {
           product.contains("vbox86p") ||
           (brand.startsWith("generic") && device.startsWith("generic"))
 
+      val isCloudContainer = host.contains("google") && (model.contains("sdk") || hardware.contains("goldfish") || hardware.contains("ranchu")) ||
+          isRobolectric
+
       val isVirtual = hardware.contains("vbox") ||
           model.contains("virtual") ||
           product.contains("virtual") ||
           manufacturer.contains("cros")
 
       return when {
+        isCloudContainer -> CLOUD_CONTAINER
         isEmulator -> EMULATOR
         isVirtual -> VIRTUAL_DEVICE
-        hardware.isNotBlank() && !isEmulator && !isVirtual &&
-            !fingerprint.contains("robolectric") &&
+        hardware.isNotBlank() && !isEmulator && !isVirtual && !isCloudContainer &&
             !hardware.contains("unknown") -> REAL_PHYSICAL_DEVICE
         else -> UNKNOWN
       }

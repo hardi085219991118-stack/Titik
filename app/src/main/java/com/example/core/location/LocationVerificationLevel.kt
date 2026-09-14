@@ -21,5 +21,6 @@ enum class LocationVerificationLevel {
   MOCK,
   VIRTUAL,
   REAL_DEVICE_UNVERIFIED,
-  REAL_DEVICE_VERIFIED
+  REAL_DEVICE_VERIFIED,
+  UNKNOWN
 }

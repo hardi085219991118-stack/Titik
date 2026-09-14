@@ -180,6 +180,208 @@ class DeviceLocationRobolectricTest {
     assertEquals("GPS timeout", viewModel.uiState.value.locationErrorMessage)
   }
 
+  @Test
+  fun `test valid coordinate Prompt 005C`() {
+    val valid = DeviceLocation(
+      latitude = -2.585765,
+      longitude = 114.441215,
+      accuracyMeters = 5.3f,
+      timeMillis = 1700000000000L,
+      provider = "gps"
+    )
+    assertTrue("Real device coordinate must pass validation", valid.isValid())
+  }
+
+  @Test
+  fun `test invalid latitude Prompt 005C`() {
+    assertFalse(DeviceLocation(latitude = 90.00001, longitude = 100.0, timeMillis = 1000L).isValid())
+    assertFalse(DeviceLocation(latitude = -90.00001, longitude = 100.0, timeMillis = 1000L).isValid())
+    assertFalse(DeviceLocation(latitude = Double.NaN, longitude = 100.0, timeMillis = 1000L).isValid())
+    assertFalse(DeviceLocation(latitude = Double.POSITIVE_INFINITY, longitude = 100.0, timeMillis = 1000L).isValid())
+    assertFalse(DeviceLocation(latitude = Double.NEGATIVE_INFINITY, longitude = 100.0, timeMillis = 1000L).isValid())
+  }
+
+  @Test
+  fun `test invalid longitude Prompt 005C`() {
+    assertFalse(DeviceLocation(latitude = 0.0, longitude = 180.00001, timeMillis = 1000L).isValid())
+    assertFalse(DeviceLocation(latitude = 0.0, longitude = -180.00001, timeMillis = 1000L).isValid())
+    assertFalse(DeviceLocation(latitude = 0.0, longitude = Double.NaN, timeMillis = 1000L).isValid())
+    assertFalse(DeviceLocation(latitude = 0.0, longitude = Double.POSITIVE_INFINITY, timeMillis = 1000L).isValid())
+    assertFalse(DeviceLocation(latitude = 0.0, longitude = Double.NEGATIVE_INFINITY, timeMillis = 1000L).isValid())
+  }
+
+  @Test
+  fun `test null location Prompt 005C`() {
+    val fakeTracker = FakeLocationTracker()
+    assertNull(fakeTracker.currentLocation.value)
+    assertEquals(LocationStatus.LOCATION_PERMISSION_REQUIRED, fakeTracker.locationStatus.value)
+  }
+
+  @Test
+  fun `test mock location detection Prompt 005C`() {
+    val mockLoc = DeviceLocation(
+      latitude = -2.585765,
+      longitude = 114.441215,
+      timeMillis = 1000L,
+      provider = "gps",
+      isMock = true
+    )
+    assertEquals("MOCK / VIRTUAL", mockLoc.locationSource)
+    assertEquals(com.example.core.location.LocationVerificationLevel.MOCK, mockLoc.verificationLevel)
+    assertFalse("Mock location must never be verified as real device", mockLoc.isRealDeviceVerified)
+  }
+
+  @Test
+  fun `test cached location source and level Prompt 005C`() {
+    val cachedLoc = DeviceLocation(
+      latitude = -2.585765,
+      longitude = 114.441215,
+      timeMillis = 1000L,
+      provider = "gps",
+      isFromCache = true
+    )
+    assertEquals("CACHED (GPS)", cachedLoc.locationSource)
+    assertEquals(com.example.core.location.LocationVerificationLevel.CACHED, cachedLoc.verificationLevel)
+  }
+
+  @Test
+  fun `test fresh location fix Prompt 005C`() {
+    val now = System.currentTimeMillis()
+    val freshFix = DeviceLocation(
+      latitude = -2.585765,
+      longitude = 114.441215,
+      accuracyMeters = 5.3f,
+      timeMillis = now,
+      provider = "gps",
+      isFromCache = false,
+      isMock = false
+    )
+    assertEquals("GPS", freshFix.locationSource)
+    assertFalse(freshFix.isFromCache)
+    assertFalse(freshFix.isMock)
+    assertFalse(freshFix.isStale(now))
+  }
+
+  @Test
+  fun `test location sources GPS network fused unknown Prompt 005C`() {
+    val gps = DeviceLocation(latitude = 0.0, longitude = 0.0, timeMillis = 1L, provider = "gps")
+    assertEquals("GPS", gps.locationSource)
+
+    val net = DeviceLocation(latitude = 0.0, longitude = 0.0, timeMillis = 1L, provider = "network")
+    assertEquals("NETWORK", net.locationSource)
+
+    val fused = DeviceLocation(latitude = 0.0, longitude = 0.0, timeMillis = 1L, provider = "fused")
+    assertEquals("FUSED", fused.locationSource)
+
+    val passive = DeviceLocation(latitude = 0.0, longitude = 0.0, timeMillis = 1L, provider = "passive")
+    assertEquals("PASSIVE", passive.locationSource)
+
+    val unk = DeviceLocation(latitude = 0.0, longitude = 0.0, timeMillis = 1L, provider = null)
+    assertEquals("UNKNOWN", unk.locationSource)
+  }
+
+  @Test
+  fun `test emulator and virtual environments Prompt 005C`() {
+    val emuLevel = DeviceLocation.resolveVerificationLevel(
+      isMock = false,
+      isFromCache = false,
+      runtimeEnvironment = com.example.core.location.RuntimeEnvironment.EMULATOR,
+      isRealDeviceVerified = false
+    )
+    assertEquals(com.example.core.location.LocationVerificationLevel.VIRTUAL, emuLevel)
+
+    val virtLevel = DeviceLocation.resolveVerificationLevel(
+      isMock = false,
+      isFromCache = false,
+      runtimeEnvironment = com.example.core.location.RuntimeEnvironment.VIRTUAL_DEVICE,
+      isRealDeviceVerified = false
+    )
+    assertEquals(com.example.core.location.LocationVerificationLevel.VIRTUAL, virtLevel)
+
+    val cloudLevel = DeviceLocation.resolveVerificationLevel(
+      isMock = false,
+      isFromCache = false,
+      runtimeEnvironment = com.example.core.location.RuntimeEnvironment.CLOUD_CONTAINER,
+      isRealDeviceVerified = false
+    )
+    assertEquals(com.example.core.location.LocationVerificationLevel.VIRTUAL, cloudLevel)
+  }
+
+  @Test
+  fun `test unknown runtime environment Prompt 005C`() {
+    val unkLevel = DeviceLocation.resolveVerificationLevel(
+      isMock = false,
+      isFromCache = false,
+      runtimeEnvironment = com.example.core.location.RuntimeEnvironment.UNKNOWN,
+      isRealDeviceVerified = false
+    )
+    assertEquals(com.example.core.location.LocationVerificationLevel.UNKNOWN, unkLevel)
+  }
+
+  @Test
+  fun `test REAL_DEVICE_VERIFIED cannot be claimed without valid verification evidence Prompt 005C`() {
+    // 1. In physical device runtime, without isRealDeviceVerified: MUST be REAL_DEVICE_UNVERIFIED
+    val unverifiedPhysical = DeviceLocation.resolveVerificationLevel(
+      isMock = false,
+      isFromCache = false,
+      runtimeEnvironment = com.example.core.location.RuntimeEnvironment.REAL_PHYSICAL_DEVICE,
+      isRealDeviceVerified = false
+    )
+    assertEquals(
+      "Without explicit manual verification evidence, physical device fix must be REAL_DEVICE_UNVERIFIED",
+      com.example.core.location.LocationVerificationLevel.REAL_DEVICE_UNVERIFIED,
+      unverifiedPhysical
+    )
+
+    // 2. If isMock is true, even with isRealDeviceVerified = true: MUST be MOCK
+    val mockFraud = DeviceLocation.resolveVerificationLevel(
+      isMock = true,
+      isFromCache = false,
+      runtimeEnvironment = com.example.core.location.RuntimeEnvironment.REAL_PHYSICAL_DEVICE,
+      isRealDeviceVerified = true
+    )
+    assertEquals(com.example.core.location.LocationVerificationLevel.MOCK, mockFraud)
+
+    // 3. If isFromCache is true, even in physical device: MUST be CACHED
+    val cacheFraud = DeviceLocation.resolveVerificationLevel(
+      isMock = false,
+      isFromCache = true,
+      runtimeEnvironment = com.example.core.location.RuntimeEnvironment.REAL_PHYSICAL_DEVICE,
+      isRealDeviceVerified = true
+    )
+    assertEquals(com.example.core.location.LocationVerificationLevel.CACHED, cacheFraud)
+
+    // 4. If runtime is EMULATOR or VIRTUAL, even with isRealDeviceVerified = true: MUST be VIRTUAL
+    val emuFraud = DeviceLocation.resolveVerificationLevel(
+      isMock = false,
+      isFromCache = false,
+      runtimeEnvironment = com.example.core.location.RuntimeEnvironment.EMULATOR,
+      isRealDeviceVerified = true
+    )
+    assertEquals(com.example.core.location.LocationVerificationLevel.VIRTUAL, emuFraud)
+
+    // 5. Only when ALL conditions met (real hardware, not mock, not cached, verified): REAL_DEVICE_VERIFIED
+    val verified = DeviceLocation.resolveVerificationLevel(
+      isMock = false,
+      isFromCache = false,
+      runtimeEnvironment = com.example.core.location.RuntimeEnvironment.REAL_PHYSICAL_DEVICE,
+      isRealDeviceVerified = true
+    )
+    assertEquals(com.example.core.location.LocationVerificationLevel.REAL_DEVICE_VERIFIED, verified)
+  }
+
+  @Test
+  fun `test zero fire markers policy across registries Prompt 005C`() {
+    val fire006 = com.example.core.registry.FeatureRegistry.getFeature("FIRE-006")
+    assertEquals(com.example.core.contract.FeatureStatus.NOT_STARTED, fire006?.status)
+
+    val fire007 = com.example.core.registry.FeatureRegistry.getFeature("FIRE-007")
+    assertEquals(com.example.core.contract.FeatureStatus.NOT_STARTED, fire007?.status)
+
+    val fire008 = com.example.core.registry.FeatureRegistry.getFeature("FIRE-008")
+    assertEquals(com.example.core.contract.FeatureStatus.NOT_STARTED, fire008?.status)
+  }
+
   private class FakeLocationTracker : LocationTracker {
     private val _status = MutableStateFlow(LocationStatus.LOCATION_PERMISSION_REQUIRED)
     override val locationStatus: StateFlow<LocationStatus> = _status
