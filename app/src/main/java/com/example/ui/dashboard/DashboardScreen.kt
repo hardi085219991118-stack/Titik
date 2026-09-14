@@ -68,6 +68,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.location.DeviceLocation
 import com.example.core.location.LocationStatus
+import com.example.core.location.LocationVerificationLevel
+import com.example.core.location.RuntimeEnvironment
 import com.example.core.logging.AppLogger
 import com.example.ui.FoundationScreen
 import com.example.ui.map.MapScreen
@@ -355,6 +357,16 @@ fun RealLocationCard(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
+        val cardTitle = when {
+          state.deviceLocation?.verificationLevel == LocationVerificationLevel.REAL_DEVICE_VERIFIED -> "REAL DEVICE: VERIFIED"
+          state.deviceLocation?.isMock == true -> "LOCATION: MOCK LOCATION"
+          state.deviceLocation?.isFromCache == true -> "LOCATION: CACHED LOCATION"
+          state.deviceLocation?.runtimeEnvironment == RuntimeEnvironment.EMULATOR -> "RUNTIME: EMULATOR"
+          state.deviceLocation?.runtimeEnvironment == RuntimeEnvironment.VIRTUAL_DEVICE -> "RUNTIME: VIRTUAL DEVICE"
+          state.locationStatus == LocationStatus.LOCATION_AVAILABLE -> "REAL DEVICE: NOT VERIFIED"
+          else -> "LOKASI PERANGKAT"
+        }
+
         Row(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -375,12 +387,12 @@ fun RealLocationCard(
 
           Icon(
             imageVector = icon,
-            contentDescription = "Lokasi Saya",
+            contentDescription = cardTitle,
             tint = iconTint,
             modifier = Modifier.size(22.dp)
           )
           Text(
-            text = "LOKASI SAYA (GPS)",
+            text = cardTitle,
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onSurface
           )
@@ -610,56 +622,78 @@ fun LocationDataDisplay(
   val formattedFixTime = remember(location.timeMillis) {
     if (location.timeMillis > 0) timeFormat.format(Date(location.timeMillis)) else "Waktu tidak valid"
   }
+  val isStale = remember(location.timeMillis) { location.isStale() }
+  val locationAgeDisplay = remember(location.timeMillis) { location.getLocationAgeDisplay() }
 
   Column(
     modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(8.dp)
   ) {
-    if (location.isMock) {
-      Box(
-        modifier = Modifier
-          .fillMaxWidth()
-          .clip(RoundedCornerShape(4.dp))
-          .background(MaterialTheme.colorScheme.errorContainer)
-          .padding(horizontal = 8.dp, vertical = 4.dp)
-      ) {
-        Text(
-          text = "CRITICAL: MOCK / FAKE LOCATION TERDETEKSI (DATA TIDAK TERVERIFIKASI)",
-          style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-          color = MaterialTheme.colorScheme.onErrorContainer
-        )
+    // 1. Status Banner
+    when {
+      location.isMock -> {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.errorContainer)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+          Text(
+            text = "CRITICAL: MOCK / VIRTUAL LOCATION TERDETEKSI (DATA TIDAK TERVERIFIKASI)",
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onErrorContainer
+          )
+        }
       }
-    } else if (location.isFromCache) {
-      Box(
-        modifier = Modifier
-          .fillMaxWidth()
-          .clip(RoundedCornerShape(4.dp))
-          .background(MaterialTheme.colorScheme.tertiaryContainer)
-          .padding(horizontal = 8.dp, vertical = 4.dp)
-      ) {
-        Text(
-          text = "CACHED FIX (Lokasi terakhir tersimpan, bukan Real-time GPS Now)",
-          style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-          color = MaterialTheme.colorScheme.onTertiaryContainer
-        )
+      isStale -> {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f))
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+          Text(
+            text = "STALE LOCATION (> 15 menit): Koordinat lama tersimpan, bukan Current GPS",
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onErrorContainer
+          )
+        }
       }
-    } else {
-      Box(
-        modifier = Modifier
-          .fillMaxWidth()
-          .clip(RoundedCornerShape(4.dp))
-          .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
-          .padding(horizontal = 8.dp, vertical = 4.dp)
-      ) {
-        Text(
-          text = "CURRENT RUNTIME FIX (${location.locationSource})",
-          style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-          color = MaterialTheme.colorScheme.onPrimaryContainer
-        )
+      location.isFromCache -> {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.tertiaryContainer)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+          Text(
+            text = "CACHED LOCATION: Lokasi terakhir tersimpan, bukan Real-time GPS Now",
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onTertiaryContainer
+          )
+        }
+      }
+      else -> {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+          Text(
+            text = "RUNTIME FIX: ${location.locationSource}",
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+          )
+        }
       }
     }
 
-    // Disclaimer Kejujuran Real Device
+    // 2. Real Device & Runtime Environment Disclaimer (Section 10)
     Box(
       modifier = Modifier
         .fillMaxWidth()
@@ -667,17 +701,33 @@ fun LocationDataDisplay(
         .background(MaterialTheme.colorScheme.surfaceVariant)
         .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
-      Text(
-        text = "REAL DEVICE GPS VERIFICATION: NOT AVAILABLE (Runtime Android / Virtual Provider)",
-        style = MaterialTheme.typography.labelSmall.copy(
-          fontFamily = FontFamily.Monospace,
-          fontSize = 9.sp,
-          fontWeight = FontWeight.SemiBold
-        ),
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-      )
+      Column {
+        Text(
+          text = if (location.verificationLevel == LocationVerificationLevel.REAL_DEVICE_VERIFIED) {
+            "REAL DEVICE: VERIFIED (Perangkat Fisik Nyata Terkonfirmasi)"
+          } else {
+            "REAL DEVICE: NOT VERIFIED (Real Device GPS verification is pending)"
+          },
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontFamily = FontFamily.Monospace,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold
+          ),
+          color = if (location.verificationLevel == LocationVerificationLevel.REAL_DEVICE_VERIFIED) StatusVerified else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+          text = "RUNTIME: ${location.runtimeEnvironment.name} (Virtual Provider / Cloud Container)",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontFamily = FontFamily.Monospace,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.SemiBold
+          ),
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+      }
     }
 
+    // 3. LATITUDE & LONGITUDE
     Row(
       modifier = Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -724,6 +774,7 @@ fun LocationDataDisplay(
       color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     )
 
+    // 4. ACCURACY & LOCATION AGE (Section 13 & 15)
     Row(
       modifier = Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -752,7 +803,31 @@ fun LocationDataDisplay(
 
       Column(modifier = Modifier.weight(1f)) {
         Text(
-          text = "PROVIDER / SOURCE",
+          text = "LOCATION AGE",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+        )
+        Text(
+          text = locationAgeDisplay,
+          style = MaterialTheme.typography.bodyMedium.copy(
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.SemiBold
+          ),
+          modifier = Modifier.testTag("location_age_value")
+        )
+      }
+    }
+
+    // 5. LOCATION SOURCE & LOCATION FIX TIME (Section 13)
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+      Column(modifier = Modifier.weight(1f)) {
+        Text(
+          text = "LOCATION SOURCE",
           style = MaterialTheme.typography.labelSmall.copy(
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -767,27 +842,75 @@ fun LocationDataDisplay(
           modifier = Modifier.testTag("location_provider_value")
         )
       }
+
+      Column(modifier = Modifier.weight(1f)) {
+        Text(
+          text = "LOCATION TIME (${if (location.isFromCache) "Cache" else "Fix"})",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+        )
+        Text(
+          text = formattedFixTime,
+          style = MaterialTheme.typography.bodySmall.copy(
+            fontFamily = FontFamily.Monospace
+          ),
+          modifier = Modifier.testTag("location_time_value")
+        )
+      }
     }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-      Text(
-        text = "LOCATION FIX TIME (${if (location.isFromCache) "Waktu Cache" else "Waktu Fix"})",
-        style = MaterialTheme.typography.labelSmall.copy(
-          fontWeight = FontWeight.Bold,
-          color = MaterialTheme.colorScheme.onSurfaceVariant
+    // 6. RUNTIME ENVIRONMENT & VERIFICATION STATUS (Section 7, 8, 13)
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+      Column(modifier = Modifier.weight(1f)) {
+        Text(
+          text = "RUNTIME ENVIRONMENT",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
         )
-      )
-      Text(
-        text = formattedFixTime,
-        style = MaterialTheme.typography.bodySmall.copy(
-          fontFamily = FontFamily.Monospace
-        ),
-        modifier = Modifier.testTag("location_time_value")
-      )
+        Text(
+          text = location.runtimeEnvironment.name,
+          style = MaterialTheme.typography.bodySmall.copy(
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.SemiBold
+          ),
+          modifier = Modifier.testTag("location_runtime_env_value")
+        )
+      }
+
+      Column(modifier = Modifier.weight(1f)) {
+        Text(
+          text = "VERIFICATION STATUS",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+        )
+        Text(
+          text = location.verificationLevel.name,
+          style = MaterialTheme.typography.bodySmall.copy(
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.SemiBold
+          ),
+          color = when (location.verificationLevel) {
+            LocationVerificationLevel.REAL_DEVICE_VERIFIED -> StatusVerified
+            LocationVerificationLevel.MOCK, LocationVerificationLevel.UNVERIFIED -> StatusBlocked
+            else -> MaterialTheme.colorScheme.onSurface
+          },
+          modifier = Modifier.testTag("location_verification_value")
+        )
+      }
     }
 
     Spacer(modifier = Modifier.height(4.dp))
 
+    // Section 14: Tombol PERBARUI LOKASI
     OutlinedButton(
       onClick = onRefresh,
       modifier = Modifier
@@ -796,7 +919,7 @@ fun LocationDataDisplay(
     ) {
       Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
       Spacer(modifier = Modifier.width(8.dp))
-      Text("PERBARUI KOORDINAT GPS")
+      Text("PERBARUI LOKASI")
     }
   }
 }

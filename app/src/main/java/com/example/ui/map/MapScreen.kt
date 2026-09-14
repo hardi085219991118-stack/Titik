@@ -63,6 +63,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.core.location.DeviceLocation
 import com.example.core.location.LocationStatus
+import com.example.core.location.LocationVerificationLevel
+import com.example.core.location.RuntimeEnvironment
 import com.example.core.logging.AppError
 import com.example.core.logging.AppLogger
 import com.example.core.logging.ErrorType
@@ -331,9 +333,12 @@ fun MapScreen(
                 val userMarker = Marker(mv).apply {
                   position = GeoPoint(deviceLocation.latitude, deviceLocation.longitude)
                   title = when {
-                    deviceLocation.isMock -> "POSISI RUNTIME (MOCK / UNVERIFIED)"
-                    deviceLocation.isFromCache -> "POSISI TERAKHIR (CACHED)"
-                    else -> "POSISI RUNTIME (${deviceLocation.locationSource})"
+                    deviceLocation.isMock -> "MOCK LOCATION (UNVERIFIED)"
+                    deviceLocation.runtimeEnvironment == RuntimeEnvironment.EMULATOR ||
+                    deviceLocation.runtimeEnvironment == RuntimeEnvironment.VIRTUAL_DEVICE -> "VIRTUAL TEST LOCATION"
+                    deviceLocation.isFromCache -> "CACHED LOCATION"
+                    deviceLocation.verificationLevel == LocationVerificationLevel.REAL_DEVICE_VERIFIED -> "REAL DEVICE LOCATION"
+                    else -> "LOKASI PERANGKAT (${deviceLocation.locationSource})"
                   }
                   val shortTime = if (deviceLocation.timeMillis > 0) {
                     SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(deviceLocation.timeMillis))
@@ -517,6 +522,16 @@ fun UserLocationInfoCard(
       }
     )
   ) {
+    val cardTitle = when {
+      location?.verificationLevel == LocationVerificationLevel.REAL_DEVICE_VERIFIED -> "REAL DEVICE: VERIFIED"
+      location?.isMock == true -> "LOCATION: MOCK LOCATION"
+      location?.isFromCache == true -> "LOCATION: CACHED LOCATION"
+      location?.runtimeEnvironment == RuntimeEnvironment.EMULATOR -> "RUNTIME: EMULATOR (VIRTUAL TEST LOCATION)"
+      location?.runtimeEnvironment == RuntimeEnvironment.VIRTUAL_DEVICE -> "RUNTIME: VIRTUAL DEVICE (VIRTUAL TEST LOCATION)"
+      location != null -> "REAL DEVICE: NOT VERIFIED"
+      else -> "MAP INITIAL VIEW"
+    }
+
     Column(
       modifier = Modifier.padding(14.dp),
       verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -540,14 +555,14 @@ fun UserLocationInfoCard(
           ) {
             Icon(
               imageVector = Icons.Default.LocationOn,
-              contentDescription = "Posisi Saya",
+              contentDescription = cardTitle,
               tint = MaterialTheme.colorScheme.onPrimaryContainer,
               modifier = Modifier.size(16.dp)
             )
           }
           Column {
             Text(
-              text = "POSISI SAYA",
+              text = cardTitle,
               style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
               color = MaterialTheme.colorScheme.onSurface,
               modifier = Modifier.testTag("user_location_title")
@@ -606,6 +621,20 @@ fun UserLocationInfoCard(
                 color = MaterialTheme.colorScheme.onErrorContainer
               )
             }
+          } else if (location.isStale()) {
+            Box(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(4.dp))
+                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f))
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+              Text(
+                text = "STALE LOCATION (> 15 menit): Koordinat lama tersimpan, bukan Current GPS",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onErrorContainer
+              )
+            }
           } else if (location.isFromCache) {
             Box(
               modifier = Modifier
@@ -615,7 +644,7 @@ fun UserLocationInfoCard(
                 .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
               Text(
-                text = "CACHED FIX (Posisi terakhir tersimpan, bukan Real-time GPS Now)",
+                text = "CACHED LOCATION (Posisi terakhir tersimpan, bukan Real-time GPS Now)",
                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onTertiaryContainer
               )
@@ -644,15 +673,30 @@ fun UserLocationInfoCard(
               .background(MaterialTheme.colorScheme.surfaceVariant)
               .padding(horizontal = 8.dp, vertical = 4.dp)
           ) {
-            Text(
-              text = "REAL DEVICE GPS: NOT VERIFIED (Menjalankan Android Runtime / Virtual Provider)",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontFamily = FontFamily.Monospace,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.SemiBold
-              ),
-              color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Column {
+              Text(
+                text = if (location.verificationLevel == LocationVerificationLevel.REAL_DEVICE_VERIFIED) {
+                  "REAL DEVICE: VERIFIED (Perangkat Fisik Nyata Terkonfirmasi)"
+                } else {
+                  "REAL DEVICE: NOT VERIFIED (Real Device GPS verification is pending)"
+                },
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontFamily = FontFamily.Monospace,
+                  fontSize = 9.sp,
+                  fontWeight = FontWeight.Bold
+                ),
+                color = if (location.verificationLevel == LocationVerificationLevel.REAL_DEVICE_VERIFIED) StatusVerified else MaterialTheme.colorScheme.onSurfaceVariant
+              )
+              Text(
+                text = "RUNTIME: ${location.runtimeEnvironment.name} (Virtual Provider / Cloud Container)",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontFamily = FontFamily.Monospace,
+                  fontSize = 9.sp,
+                  fontWeight = FontWeight.SemiBold
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+              )
+            }
           }
 
           // Latitude & Longitude
@@ -697,7 +741,7 @@ fun UserLocationInfoCard(
             }
           }
 
-          // Accuracy & Timestamp
+          // Accuracy & Location Age
           Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -726,28 +770,24 @@ fun UserLocationInfoCard(
 
             Column(modifier = Modifier.weight(1f)) {
               Text(
-                text = "LOCATION TIME (${if (location.isFromCache) "Cache" else "Fix"})",
+                text = "LOCATION AGE",
                 style = MaterialTheme.typography.labelSmall.copy(
                   fontWeight = FontWeight.Bold,
                   color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
               )
               Text(
-                text = if (location.timeMillis > 0) {
-                  timeFormat.format(Date(location.timeMillis))
-                } else {
-                  "BELUM TERSEDIA"
-                },
+                text = location.getLocationAgeDisplay(),
                 style = MaterialTheme.typography.bodySmall.copy(
                   fontFamily = FontFamily.Monospace,
                   fontWeight = FontWeight.Medium
                 ),
-                modifier = Modifier.testTag("user_time_text")
+                modifier = Modifier.testTag("user_age_text")
               )
             }
           }
 
-          // Source / Provider Row
+          // Location Source & Timestamp
           Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -772,19 +812,68 @@ fun UserLocationInfoCard(
 
             Column(modifier = Modifier.weight(1f)) {
               Text(
-                text = "PROVIDER STATUS",
+                text = "LOCATION TIME (${if (location.isFromCache) "Cache" else "Fix"})",
                 style = MaterialTheme.typography.labelSmall.copy(
                   fontWeight = FontWeight.Bold,
                   color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
               )
               Text(
-                text = if (location.isMock) "MOCK (UNTRUSTED)" else "SYSTEM PROVIDER",
+                text = if (location.timeMillis > 0) {
+                  timeFormat.format(Date(location.timeMillis))
+                } else {
+                  "BELUM TERSEDIA"
+                },
+                style = MaterialTheme.typography.bodySmall.copy(
+                  fontFamily = FontFamily.Monospace,
+                  fontWeight = FontWeight.Medium
+                ),
+                modifier = Modifier.testTag("user_time_text")
+              )
+            }
+          }
+
+          // Runtime Env & Verification Status Row
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+          ) {
+            Column(modifier = Modifier.weight(1f)) {
+              Text(
+                text = "RUNTIME ENVIRONMENT",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.Bold,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+              )
+              Text(
+                text = location.runtimeEnvironment.name,
+                style = MaterialTheme.typography.bodySmall.copy(
+                  fontFamily = FontFamily.Monospace,
+                  fontWeight = FontWeight.SemiBold
+                )
+              )
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+              Text(
+                text = "VERIFICATION STATUS",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.Bold,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+              )
+              Text(
+                text = location.verificationLevel.name,
                 style = MaterialTheme.typography.bodySmall.copy(
                   fontFamily = FontFamily.Monospace,
                   fontWeight = FontWeight.SemiBold
                 ),
-                color = if (location.isMock) StatusBlocked else MaterialTheme.colorScheme.onSurface
+                color = when (location.verificationLevel) {
+                  LocationVerificationLevel.REAL_DEVICE_VERIFIED -> StatusVerified
+                  LocationVerificationLevel.MOCK, LocationVerificationLevel.UNVERIFIED -> StatusBlocked
+                  else -> MaterialTheme.colorScheme.onSurface
+                }
               )
             }
           }

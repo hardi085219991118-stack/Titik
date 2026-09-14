@@ -47,11 +47,15 @@ class ExampleRobolectricTest {
     assertEquals("Dashboard", fire003?.name)
     assertEquals(FeatureStatus.RUNTIME_VERIFIED, fire003?.status)
 
-    // Prompt 004: FIRE-004 is RUNTIME_VERIFIED
+    // Prompt 005B: FIRE-004 status must be REAL_DEVICE_VERIFICATION_PENDING (Hardware GPS pending physical verification)
     val fire004 = FeatureRegistry.getFeature("FIRE-004")
     assertNotNull(fire004)
     assertEquals("Device GPS", fire004?.name)
-    assertEquals(FeatureStatus.RUNTIME_VERIFIED, fire004?.status)
+    assertEquals(
+      "Feature FIRE-004 must be REAL_DEVICE_VERIFICATION_PENDING on Prompt 005B",
+      FeatureStatus.REAL_DEVICE_VERIFICATION_PENDING,
+      fire004?.status
+    )
 
     // Prompt 005A: FIRE-005 status must be REAL_DEVICE_VERIFICATION_PENDING (PRODUCTION_READY revoked)
     val fire005 = FeatureRegistry.getFeature("FIRE-005")

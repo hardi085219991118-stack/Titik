@@ -6,7 +6,9 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.os.Build
 import android.os.Bundle
+import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
@@ -23,6 +25,9 @@ interface LocationTracker {
   val errorMessage: StateFlow<String?>
 
   fun requestLocation(context: Context)
+  fun refreshLocation(context: Context) {
+    requestLocation(context)
+  }
   fun markPermissionDenied(isPermanentlyDenied: Boolean)
   fun stopTracking()
 }
@@ -41,11 +46,12 @@ class AndroidLocationTracker(
   override val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
   private var activeListener: LocationListener? = null
+  private var cancellationSignal: CancellationSignal? = null
   private val mainHandler = Handler(Looper.getMainLooper())
   private var timeoutRunnable: Runnable? = null
 
   override fun requestLocation(context: Context) {
-    // 1. Periksa Permissions
+    // 1. Audit Permissions (Section 3: High Accuracy & Permission Handling)
     val hasFine = ContextCompat.checkSelfPermission(
       context,
       Manifest.permission.ACCESS_FINE_LOCATION
@@ -77,66 +83,78 @@ class AndroidLocationTracker(
       return
     }
 
-    // 2. Periksa Provider GPS & Network
+    // 2. Audit Location Settings (Section 4: Location Services Enabled Check)
+    val isLocationEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      runCatching { locationManager.isLocationEnabled }.getOrDefault(false)
+    } else {
+      runCatching {
+        locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+            locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+      }.getOrDefault(false)
+    }
+
     val isGpsEnabled = runCatching { locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) }.getOrDefault(false)
     val isNetworkEnabled = runCatching { locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) }.getOrDefault(false)
 
-    if (!isGpsEnabled && !isNetworkEnabled) {
+    if (!isLocationEnabled || (!isGpsEnabled && !isNetworkEnabled)) {
       _locationStatus.value = LocationStatus.LOCATION_PROVIDER_DISABLED
-      _errorMessage.value = "Layanan lokasi / GPS perangkat nonaktif. Mohon aktifkan GPS pada pengaturan perangkat."
+      _errorMessage.value = "LOCATION PROVIDER DISABLED: Layanan lokasi / GPS perangkat nonaktif. Mohon aktifkan GPS pada Pengaturan Perangkat."
       return
     }
 
-    // 3. Status Memuat Lokasi Nyata
+    // 3. High Accuracy Provider Selection (Section 3)
+    // Jangan meminta GPS_PROVIDER high accuracy jika ACCESS_FINE_LOCATION tidak diberikan
+    val providerToUse = when {
+      hasFine && isGpsEnabled -> LocationManager.GPS_PROVIDER
+      isNetworkEnabled -> LocationManager.NETWORK_PROVIDER
+      isGpsEnabled -> LocationManager.GPS_PROVIDER
+      else -> LocationManager.PASSIVE_PROVIDER
+    }
+
+    // 4. Set status loading
     _locationStatus.value = LocationStatus.LOCATION_LOADING
     _errorMessage.value = null
 
-    // Periksa cached lastKnownLocation terlebih dahulu secara aman jika ada
-    val providerToUse = when {
-      isGpsEnabled -> LocationManager.GPS_PROVIDER
-      else -> LocationManager.NETWORK_PROVIDER
-    }
-
+    // 5. Fallback ke cached lastKnownLocation dengan label CACHED LOCATION (Section 2)
     try {
       val lastKnown = locationManager.getLastKnownLocation(providerToUse)
       if (lastKnown != null) {
         val cachedLoc = lastKnown.toDeviceLocation(isCache = true)
         if (cachedLoc.isValid()) {
           _currentLocation.value = cachedLoc
-          _locationStatus.value = LocationStatus.LOCATION_AVAILABLE
-          AppLogger.recordEvent("Cached location fix dimuat: lat=${cachedLoc.latitude}, lon=${cachedLoc.longitude}")
+          AppLogger.recordEvent("Cached location dimuat: lat=${cachedLoc.latitude}, lon=${cachedLoc.longitude}, time=${cachedLoc.timeMillis}")
         }
       }
 
-      // Hentikan listener lama jika ada
+      // Hentikan request/listener lama jika ada
       stopTracking()
 
-      // Buat LocationListener baru untuk request fresh fix
+      // 6. Section 2: Prioritaskan getCurrentLocation() untuk lokasi terbaru
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val signal = CancellationSignal()
+        cancellationSignal = signal
+        try {
+          locationManager.getCurrentLocation(
+            providerToUse,
+            signal,
+            ContextCompat.getMainExecutor(context)
+          ) { location ->
+            if (location != null) {
+              handleFreshLocation(location)
+            }
+          }
+        } catch (e: SecurityException) {
+          _locationStatus.value = LocationStatus.LOCATION_PERMISSION_DENIED
+          _errorMessage.value = "SecurityException pada getCurrentLocation: ${e.message}"
+        } catch (_: Throwable) {
+          // Fallback ke requestLocationUpdates
+        }
+      }
+
+      // 7. Request updates untuk fresh single/continuous fix
       val listener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
-          cancelTimeout()
-          val freshLoc = location.toDeviceLocation(isCache = false)
-          if (freshLoc.isMock) {
-            AppLogger.recordError(
-              AppError(
-                type = ErrorType.UNKNOWN_ERROR,
-                message = "CRITICAL: Mock location provider terdeteksi pada runtime (lat=${freshLoc.latitude}, lon=${freshLoc.longitude})",
-                source = "AndroidLocationTracker",
-                recoveryAction = "Nonaktifkan mock provider pada pengaturan developer perangkat."
-              )
-            )
-          }
-          if (freshLoc.isValid()) {
-            _currentLocation.value = freshLoc
-            _locationStatus.value = LocationStatus.LOCATION_AVAILABLE
-            _errorMessage.value = null
-            AppLogger.recordEvent("Fresh runtime location fix diterima: ${freshLoc.latitude}, ${freshLoc.longitude}, source=${freshLoc.locationSource}, acc=±${freshLoc.accuracyMeters}m")
-          } else {
-            _locationStatus.value = LocationStatus.LOCATION_ERROR
-            _errorMessage.value = "Data lokasi tidak lolos sanity check geografis (-90..90, -180..180)."
-          }
-          // Hentikan tracking setelah single fix diperoleh untuk menghemat baterai & mencegah leak
-          stopTracking()
+          handleFreshLocation(location)
         }
 
         override fun onProviderEnabled(provider: String) {}
@@ -152,14 +170,17 @@ class AndroidLocationTracker(
 
       activeListener = listener
 
-      // Pasang timeout 20 detik untuk mencegah infinite loading
+      // Pasang timeout 20 detik (Section 14: Jika gagal update -> LOCATION UPDATE FAILED)
       val timeout = Runnable {
         if (_locationStatus.value == LocationStatus.LOCATION_LOADING) {
-          if (_currentLocation.value != null) {
+          val current = _currentLocation.value
+          if (current != null) {
+            // Tetap gunakan cached yang ada jika ada, namun update status
             _locationStatus.value = LocationStatus.LOCATION_AVAILABLE
+            AppLogger.recordEvent("Timeout fresh fix; menggunakan cached location fix.")
           } else {
             _locationStatus.value = LocationStatus.LOCATION_ERROR
-            _errorMessage.value = "Timeout mencari sinyal GPS nyata. Silakan pastikan berada di area terbuka dan coba lagi."
+            _errorMessage.value = "LOCATION UPDATE FAILED: Timeout mencari sinyal GPS nyata."
           }
           stopTracking()
         }
@@ -200,6 +221,35 @@ class AndroidLocationTracker(
     }
   }
 
+  private fun handleFreshLocation(location: Location) {
+    cancelTimeout()
+    val freshLoc = location.toDeviceLocation(isCache = false)
+
+    if (freshLoc.isMock) {
+      AppLogger.recordError(
+        AppError(
+          type = ErrorType.UNKNOWN_ERROR,
+          message = "CRITICAL: Mock/Virtual location provider terdeteksi (lat=${freshLoc.latitude}, lon=${freshLoc.longitude})",
+          source = "AndroidLocationTracker",
+          recoveryAction = "Nonaktifkan mock provider pada pengaturan perangkat."
+        )
+      )
+    }
+
+    if (freshLoc.isValid()) {
+      _currentLocation.value = freshLoc
+      _locationStatus.value = LocationStatus.LOCATION_AVAILABLE
+      _errorMessage.value = null
+      AppLogger.recordEvent("Fresh location fix diterima: ${freshLoc.latitude}, ${freshLoc.longitude}, source=${freshLoc.locationSource}, verification=${freshLoc.verificationLevel}")
+    } else {
+      _locationStatus.value = LocationStatus.LOCATION_ERROR
+      _errorMessage.value = "Data lokasi tidak lolos sanity check geografis (-90..90, -180..180)."
+    }
+
+    // Stop tracking setelah fix berhasil didapat untuk efisiensi baterai
+    stopTracking()
+  }
+
   override fun markPermissionDenied(isPermanentlyDenied: Boolean) {
     _locationStatus.value = LocationStatus.LOCATION_PERMISSION_DENIED
     _errorMessage.value = if (isPermanentlyDenied) {
@@ -212,6 +262,9 @@ class AndroidLocationTracker(
 
   override fun stopTracking() {
     cancelTimeout()
+    cancellationSignal?.cancel()
+    cancellationSignal = null
+
     activeListener?.let { listener ->
       val lm = applicationContext.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
       try {
@@ -230,13 +283,33 @@ class AndroidLocationTracker(
   }
 }
 
-private fun Location.toDeviceLocation(isCache: Boolean): DeviceLocation {
-  val isMockLocation = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+/**
+ * Section 5, 7, 8, 9 Prompt 005B: Konversi Location Android ke DeviceLocation.
+ */
+fun Location.toDeviceLocation(
+  isCache: Boolean,
+  runtimeEnvOverride: RuntimeEnvironment? = null
+): DeviceLocation {
+  val isMockLocation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
     this.isMock
   } else {
     @Suppress("DEPRECATION")
     this.isFromMockProvider
   }
+
+  val runtimeEnv = runtimeEnvOverride ?: RuntimeEnvironment.detect()
+  val isStaleLocation = if (this.time > 0) {
+    (System.currentTimeMillis() - this.time) > 15 * 60 * 1000L
+  } else false
+
+  val verificationLevel = when {
+    isMockLocation -> LocationVerificationLevel.MOCK
+    runtimeEnv == RuntimeEnvironment.EMULATOR || runtimeEnv == RuntimeEnvironment.VIRTUAL_DEVICE -> LocationVerificationLevel.VIRTUAL
+    isCache || isStaleLocation -> LocationVerificationLevel.CACHED
+    runtimeEnv == RuntimeEnvironment.REAL_PHYSICAL_DEVICE -> LocationVerificationLevel.REAL_DEVICE_UNVERIFIED
+    else -> LocationVerificationLevel.UNVERIFIED
+  }
+
   return DeviceLocation(
     latitude = this.latitude,
     longitude = this.longitude,
@@ -247,6 +320,8 @@ private fun Location.toDeviceLocation(isCache: Boolean): DeviceLocation {
     speedMps = if (this.hasSpeed()) this.speed else null,
     isFromCache = isCache,
     isMock = isMockLocation,
-    isRealDeviceVerified = false // Virtual/cloud emulator cannot claim real device satellite fix
+    isRealDeviceVerified = false, // Cloud emulator / preview environment cannot claim real physical device verification
+    runtimeEnvironment = runtimeEnv,
+    verificationLevel = verificationLevel
   )
 }

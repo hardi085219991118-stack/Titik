@@ -68,9 +68,9 @@ object FeatureRegistry {
       successCriteria = "Mendapatkan lokasi riil dari sensor GPS atau menampilkan state jujur saat izin/provider tidak tersedia",
       failureCriteria = "Koordinat hardcoded atau lokasi default dianggap lokasi pengguna",
       testProcedure = "Unit test permission flow & provider state, Robolectric sanity check, Compose UI test",
-      verificationLevel = "GATE 3: RUNTIME VERIFIED (LOCAL)",
-      status = FeatureStatus.RUNTIME_VERIFIED,
-      knownLimitations = "Uji perangkat fisik (Real Device) belum tersedia pada container cloud. GPS diuji via pengujian lokal Robolectric & JVM."
+      verificationLevel = "GATE 2: REAL_DEVICE_VERIFICATION_PENDING (REAL DEVICE GPS NOT VERIFIED)",
+      status = FeatureStatus.REAL_DEVICE_VERIFICATION_PENDING,
+      knownLimitations = "REAL DEVICE GPS NOT VERIFIED: Aplikasi diuji di lingkungan emulator / cloud container. Koordinat yang diterima berasal dari virtual location provider emulator, bukan GPS satelit fisik nyata. Memerlukan verifikasi pada perangkat fisik nyata."
     ),
     FeatureContract(
       id = "FIRE-005",

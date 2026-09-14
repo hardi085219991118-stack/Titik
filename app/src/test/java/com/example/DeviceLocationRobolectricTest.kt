@@ -58,7 +58,7 @@ class DeviceLocationRobolectricTest {
   }
 
   @Test
-  fun `test location source metadata and mock detection Prompt 005A`() {
+  fun `test location source metadata and mock detection Prompt 005A and 005B`() {
     val liveGps = DeviceLocation(latitude = -2.15, longitude = 114.55, timeMillis = 1000L, provider = "gps")
     assertEquals("GPS", liveGps.locationSource)
     assertFalse("Cloud container / emulator cannot claim real device verified", liveGps.isRealDeviceVerified)
@@ -67,7 +67,63 @@ class DeviceLocationRobolectricTest {
     assertEquals("CACHED (GPS)", cachedGps.locationSource)
 
     val mockLoc = DeviceLocation(latitude = -2.15, longitude = 114.55, timeMillis = 1000L, provider = "gps", isMock = true)
-    assertEquals("MOCK_PROVIDER (UNVERIFIED)", mockLoc.locationSource)
+    assertEquals("MOCK / VIRTUAL", mockLoc.locationSource)
+    assertEquals(com.example.core.location.LocationVerificationLevel.MOCK, mockLoc.verificationLevel)
+  }
+
+  @Test
+  fun `test prompt 005b runtime environment and verification levels`() {
+    val detectedEnv = com.example.core.location.RuntimeEnvironment.detect()
+    // In Robolectric / cloud container, it is not a real physical device
+    assertTrue(
+      "Container/Robolectric environment must NOT be detected as REAL_PHYSICAL_DEVICE",
+      detectedEnv != com.example.core.location.RuntimeEnvironment.REAL_PHYSICAL_DEVICE
+    )
+
+    // Verify verification level cannot be REAL_DEVICE_VERIFIED when in virtual runtime
+    val virtualLoc = DeviceLocation(
+      latitude = -2.123456,
+      longitude = 114.654321,
+      timeMillis = System.currentTimeMillis(),
+      runtimeEnvironment = com.example.core.location.RuntimeEnvironment.VIRTUAL_DEVICE,
+      verificationLevel = com.example.core.location.LocationVerificationLevel.VIRTUAL
+    )
+    assertFalse(virtualLoc.isRealDeviceVerified)
+    assertEquals(com.example.core.location.LocationVerificationLevel.VIRTUAL, virtualLoc.verificationLevel)
+  }
+
+  @Test
+  fun `test prompt 005b location age and stale location check`() {
+    val now = System.currentTimeMillis()
+
+    // Fresh location (5 seconds ago)
+    val freshLoc = DeviceLocation(
+      latitude = -2.15,
+      longitude = 114.55,
+      timeMillis = now - 5000L
+    )
+    assertFalse("5 seconds old location must not be stale", freshLoc.isStale(now))
+    assertEquals("5 detik lalu", freshLoc.getLocationAgeDisplay(now))
+
+    // Stale location (> 15 minutes = 900_000 ms)
+    val staleLoc = DeviceLocation(
+      latitude = -2.15,
+      longitude = 114.55,
+      timeMillis = now - (16 * 60 * 1000L) // 16 minutes ago
+    )
+    assertTrue("16 minutes old location must be flagged as stale (> 15 menit)", staleLoc.isStale(now))
+    assertEquals("16 menit lalu", staleLoc.getLocationAgeDisplay(now))
+  }
+
+  @Test
+  fun `test prompt 005b feature registry contract FIRE-004 status`() {
+    val fire004 = com.example.core.registry.FeatureRegistry.getFeature("FIRE-004")
+    assertNotNull("FIRE-004 must exist in registry", fire004)
+    assertEquals(
+      "FIRE-004 must be REAL_DEVICE_VERIFICATION_PENDING until physical device verification",
+      com.example.core.contract.FeatureStatus.REAL_DEVICE_VERIFICATION_PENDING,
+      fire004?.status
+    )
   }
 
   @Test
