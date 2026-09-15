@@ -73,6 +73,16 @@ import com.example.core.map.MapProviderInfo
 import com.example.ui.theme.StatusBlocked
 import com.example.ui.theme.StatusNotStarted
 import com.example.ui.theme.StatusVerified
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import com.example.core.fire.FireDataAgeCalculator
+import com.example.core.fire.FireDataRecord
+import com.example.core.fire.FireDataSourceState
+import com.example.core.map.BaseMapLayer
+import com.example.core.map.MapTileProviderFactory
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -83,13 +93,14 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Screen Peta Geografis (FIRE-005 — Map Foundation)
- * Menampilkan peta nyata berbasis osmdroid (OpenStreetMap) dan posisi riil pengguna dari FIRE-004.
+ * Screen Peta Geografis (FIRE-005 — Map Foundation & FIRE-008 — Verified Fire Markers)
+ * Menampilkan peta nyata berbasis osmdroid dan posisi riil pengguna dari FIRE-004.
+ * Menampilkan titik api terverifikasi dari NASA FIRMS (FIRE-007 / FIRE-008) HANYA jika data valid.
  *
- * BATASAN MUTLAK:
- * - ZERO FIRE MARKERS: Tidak ada marker api (karena FIRE-006 s/d FIRE-008 NOT_STARTED).
+ * MANDAT ZERO-DUMMY:
+ * - Tidak ada marker api jika data belum diverifikasi atau request gagal.
  * - Tidak ada koordinat hardcoded/dummy.
- * - Koordinat divalidasi sebelum ditampilkan pada peta.
+ * - Koordinat divalidasi ketat sebelum ditampilkan pada peta.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,8 +109,11 @@ fun MapScreen(
   deviceLocation: DeviceLocation? = null,
   locationStatus: LocationStatus = LocationStatus.LOCATION_PERMISSION_REQUIRED,
   locationErrorMessage: String? = null,
+  fireRecords: List<FireDataRecord> = emptyList(),
+  fireDataSourceState: FireDataSourceState = FireDataSourceState.NOT_VERIFIED,
   onBackToDashboard: () -> Unit = {},
   onRefreshLocation: () -> Unit = {},
+  onRefreshSatellite: () -> Unit = {},
   onRequestPermission: () -> Unit = {}
 ) {
   val context = LocalContext.current
@@ -109,6 +123,9 @@ fun MapScreen(
   var mapErrorMessage by remember { mutableStateOf<String?>(null) }
   var mapViewRef by remember { mutableStateOf<MapView?>(null) }
   var hasInitialCentered by remember { mutableStateOf(false) }
+  var selectedBaseMapLayer by remember { mutableStateOf(BaseMapLayer.OPEN_STREET_MAP) }
+  var showLayerMenu by remember { mutableStateOf(false) }
+  var selectedFireRecord by remember { mutableStateOf<FireDataRecord?>(null) }
 
   // Validasi koordinat sesuai Section 14
   val validationResult = remember(deviceLocation) {
@@ -205,6 +222,46 @@ fun MapScreen(
           }
         },
         actions = {
+          Box {
+            IconButton(
+              onClick = { showLayerMenu = true },
+              modifier = Modifier.testTag("layer_selector_button")
+            ) {
+              Icon(
+                imageVector = Icons.Default.Layers,
+                contentDescription = "Pilih Layer Peta"
+              )
+            }
+            DropdownMenu(
+              expanded = showLayerMenu,
+              onDismissRequest = { showLayerMenu = false }
+            ) {
+              BaseMapLayer.values().forEach { layer ->
+                DropdownMenuItem(
+                  text = {
+                    Column {
+                      Text(
+                        text = layer.displayName,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                          fontWeight = if (selectedBaseMapLayer == layer) FontWeight.Bold else FontWeight.Normal
+                        )
+                      )
+                      Text(
+                        text = layer.providerDescription,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                      )
+                    }
+                  },
+                  onClick = {
+                    selectedBaseMapLayer = layer
+                    mapViewRef?.setTileSource(MapTileProviderFactory.getTileSource(layer))
+                    showLayerMenu = false
+                  }
+                )
+              }
+            }
+          }
           IconButton(
             onClick = onRefreshLocation,
             modifier = Modifier.testTag("refresh_location_from_map_button")
@@ -299,7 +356,7 @@ fun MapScreen(
           factory = { ctx ->
             try {
               MapView(ctx).apply {
-                setTileSource(TileSourceFactory.MAPNIK)
+                setTileSource(MapTileProviderFactory.getTileSource(selectedBaseMapLayer))
                 setMultiTouchControls(true)
                 controller.setZoom(5.0) // Neutral default world view before GPS fix
                 mapStatus = MapStatus.MAP_READY
@@ -325,7 +382,7 @@ fun MapScreen(
               // Bersihkan seluruh overlay sebelumnya
               mv.overlays.clear()
 
-              // ZERO FIRE MARKERS: Hanya tambahkan marker posisi pengguna jika lokasi tersedia & valid
+              // 1. Tambahkan marker posisi pengguna jika lokasi tersedia & valid
               if (locationStatus == LocationStatus.LOCATION_AVAILABLE &&
                 deviceLocation != null &&
                 validationResult.isValid
@@ -357,6 +414,46 @@ fun MapScreen(
                 }
                 mv.overlays.add(userMarker)
               }
+
+              // 2. Verified Fire Markers (FIRE-008)
+              // Hanya dirender jika data satelit nyata berhasil diverifikasi (DATA_SOURCE_AVAILABLE / CACHED)
+              val isLiveOrCached = fireDataSourceState == FireDataSourceState.DATA_SOURCE_AVAILABLE ||
+                (fireDataSourceState == FireDataSourceState.CACHED && fireRecords.isNotEmpty())
+
+              if (isLiveOrCached) {
+                val validFires = fireRecords.filter { fire ->
+                  CoordinateValidator.isValid(fire.latitude, fire.longitude) &&
+                    !(fire.latitude == 0.0 && fire.longitude == 0.0)
+                }
+
+                validFires.forEach { fire ->
+                  val fireMarker = Marker(mv).apply {
+                    position = GeoPoint(fire.latitude, fire.longitude)
+                    title = "TITIK API TERDETEKSI"
+                    val acqDateStr = fire.acqDate.ifBlank { "N/A" }
+                    val acqTimeStr = if (fire.acqTime.isNotBlank()) "${fire.acqTime} UTC" else "N/A"
+                    val satStr = fire.satellite.ifBlank { "N/A" }
+                    val instStr = fire.instrument.ifBlank { "N/A" }
+                    val confStr = fire.confidence ?: "N/A"
+                    val frpStr = if (fire.frp != null) "${fire.frp} MW" else "N/A"
+                    val ageStr = FireDataAgeCalculator.formatAgeDetail(fire.acquisitionTimestampMillis)
+
+                    snippet = "Satelit: $satStr ($instStr)\nWaktu: $acqDateStr $acqTimeStr\nConfidence: $confStr | FRP: $frpStr\nUsia: $ageStr"
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    setOnMarkerClickListener { m, _ ->
+                      m.showInfoWindow()
+                      selectedFireRecord = fire
+                      true
+                    }
+                  }
+                  mv.overlays.add(fireMarker)
+                }
+
+                if (validFires.isNotEmpty()) {
+                  AppLogger.recordEvent("LIVE_RECORDS_RENDERED: count=${validFires.size}")
+                }
+              }
+
               mv.invalidate()
             }
           },
@@ -383,10 +480,20 @@ fun MapScreen(
         validationResult = validationResult,
         locationErrorMessage = locationErrorMessage,
         onRequestPermission = onRequestPermission,
+        fireRecords = fireRecords,
+        fireDataSourceState = fireDataSourceState,
         modifier = Modifier
           .align(Alignment.BottomCenter)
           .padding(16.dp)
       )
+
+      // 4. Detail Dialog jika marker titik api diklik
+      selectedFireRecord?.let { fire ->
+        FireMarkerDetailDialog(
+          record = fire,
+          onDismiss = { selectedFireRecord = null }
+        )
+      }
     }
   }
 }
@@ -502,6 +609,8 @@ fun UserLocationInfoCard(
   validationResult: CoordinateValidator.ValidationResult,
   locationErrorMessage: String?,
   onRequestPermission: () -> Unit,
+  fireRecords: List<FireDataRecord> = emptyList(),
+  fireDataSourceState: FireDataSourceState = FireDataSourceState.NOT_VERIFIED,
   modifier: Modifier = Modifier
 ) {
   val timeFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss z", Locale.getDefault()) }
@@ -569,14 +678,32 @@ fun UserLocationInfoCard(
               color = MaterialTheme.colorScheme.onSurface,
               modifier = Modifier.testTag("user_location_title")
             )
+            val badgeFireText = when {
+              fireDataSourceState == FireDataSourceState.DATA_SOURCE_AVAILABLE && fireRecords.isNotEmpty() ->
+                "${fireRecords.size} TITIK API TERVERIFIKASI (NASA FIRMS)"
+              fireDataSourceState == FireDataSourceState.NO_DETECTIONS_IN_QUERY ->
+                "0 TITIK API (QUERY RESMI NASA)"
+              fireDataSourceState == FireDataSourceState.CACHED && fireRecords.isNotEmpty() ->
+                "${fireRecords.size} TITIK API (CACHE TERSIMPAN)"
+              else ->
+                "ZERO FIRE MARKERS — DATA BELUM TERVERIFIKASI"
+            }
+            val badgeFireColor = when {
+              fireDataSourceState == FireDataSourceState.DATA_SOURCE_AVAILABLE && fireRecords.isNotEmpty() ->
+                StatusVerified
+              fireDataSourceState == FireDataSourceState.NO_DETECTIONS_IN_QUERY ->
+                StatusVerified
+              else ->
+                StatusNotStarted
+            }
             Text(
-              text = "ZERO FIRE MARKERS — FIRE-006 NOT_STARTED",
+              text = badgeFireText,
               style = MaterialTheme.typography.labelSmall.copy(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.SemiBold
               ),
-              color = StatusNotStarted,
+              color = badgeFireColor,
               modifier = Modifier.testTag("zero_fire_markers_badge")
             )
           }
@@ -1051,5 +1178,85 @@ fun UserLocationInfoCard(
         }
       }
     }
+  }
+}
+
+/**
+ * Dialog rincian hotspot terverifikasi NASA FIRMS saat marker titik api disentuh.
+ * Adhering strictly to Bagian 8: detail lengkap tanpa asumsi dan tanpa data dummy.
+ */
+@Composable
+fun FireMarkerDetailDialog(
+  record: FireDataRecord,
+  onDismiss: () -> Unit
+) {
+  val acqTimeStr = if (record.acqTime.isNotBlank()) "${record.acqTime} UTC" else "N/A"
+  val ageStr = FireDataAgeCalculator.formatAgeDetail(record.acquisitionTimestampMillis)
+
+  androidx.compose.material3.AlertDialog(
+    onDismissRequest = onDismiss,
+    icon = {
+      Icon(
+        imageVector = Icons.Default.LocalFireDepartment,
+        contentDescription = null,
+        tint = Color(0xFFD32F2F),
+        modifier = Modifier.size(32.dp)
+      )
+    },
+    title = {
+      Text(
+        text = "DETAIL TITIK API TERDETEKSI",
+        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+        modifier = Modifier.testTag("fire_marker_detail_title")
+      )
+    },
+    text = {
+      Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth()
+      ) {
+        DetailRow("Koordinat", String.format(Locale.US, "%.5f°, %.5f°", record.latitude, record.longitude))
+        DetailRow("Tanggal Akuisisi", record.acqDate.ifBlank { "N/A" })
+        DetailRow("Waktu Akuisisi", acqTimeStr)
+        DetailRow("Usia Data Satelit", ageStr)
+        DetailRow("Satelit", record.satellite.ifBlank { "N/A" })
+        DetailRow("Instrumen", record.instrument.ifBlank { "N/A" })
+        DetailRow("Tingkat Keyakinan", record.confidence ?: "N/A")
+        DetailRow("FRP (Power)", if (record.frp != null) "${record.frp} MW" else "N/A")
+        if (record.scan != null && record.track != null) {
+          DetailRow("Resolusi Pixel", "${record.scan} × ${record.track} km")
+        }
+        DetailRow("Sumber Data", "NASA FIRMS Web Services (Resmi)")
+      }
+    },
+    confirmButton = {
+      Button(
+        onClick = onDismiss,
+        modifier = Modifier.testTag("dismiss_fire_detail_button")
+      ) {
+        Text("Tutup")
+      }
+    }
+  )
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically
+  ) {
+    Text(
+      text = label,
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Text(
+      text = value,
+      style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+      fontFamily = FontFamily.Monospace,
+      color = MaterialTheme.colorScheme.onSurface
+    )
   }
 }

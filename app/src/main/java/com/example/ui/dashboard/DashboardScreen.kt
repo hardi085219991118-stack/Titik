@@ -185,8 +185,11 @@ fun DashboardScreen(
       deviceLocation = state.deviceLocation,
       locationStatus = state.locationStatus,
       locationErrorMessage = state.locationErrorMessage,
+      fireRecords = state.fireRecords,
+      fireDataSourceState = state.fireDataSourceState,
       onBackToDashboard = { showMapScreen = false },
       onRefreshLocation = onRefreshLocation,
+      onRefreshSatellite = onRefreshSatellite,
       onRequestPermission = {
         permissionLauncher.launch(
           arrayOf(

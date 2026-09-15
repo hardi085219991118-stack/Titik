@@ -3,6 +3,7 @@ package com.example.ui.dashboard
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.core.fire.FireDataAgeCalculator
 import com.example.core.fire.FireDataCredentialState
 import com.example.core.fire.FireDataRepository
 import com.example.core.fire.FireDataResponse
@@ -303,14 +304,7 @@ class DashboardViewModel(
     val dataAgeDisplay = if (response.records.isNotEmpty() && response.fetchTimeMillis > 0) {
       val latestAcq = response.records.mapNotNull { it.acquisitionTimestampMillis }.maxOrNull()
       if (latestAcq != null) {
-        val diffMs = response.fetchTimeMillis - latestAcq
-        if (diffMs >= 0) {
-          val hours = diffMs / (1000 * 60 * 60)
-          val minutes = (diffMs % (1000 * 60 * 60)) / (1000 * 60)
-          "${hours}j ${minutes}m"
-        } else {
-          "UNKNOWN"
-        }
+        FireDataAgeCalculator.formatAgeDetail(latestAcq, response.fetchTimeMillis)
       } else {
         "BELUM TERSEDIA"
       }

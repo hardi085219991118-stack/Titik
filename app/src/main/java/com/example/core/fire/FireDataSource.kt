@@ -41,6 +41,8 @@ class NasaFirmsNetworkDataSource(
     dayRange: Int
   ): FireDataResponse = withContext(Dispatchers.IO) {
     val requestTime = System.currentTimeMillis()
+    AppLogger.recordEvent("REQUEST_STARTED: sensor=$source bbox=$areaCoordinates dayRange=$dayRange")
+    AppLogger.recordEvent("LIVE_REQUEST_STARTED: sensor=$source")
     AppLogger.recordEvent("NASA_FIRMS_REQUEST_STARTED: sensor=$source, area=$areaCoordinates, dayRange=$dayRange")
 
     // Validate MAP_KEY before initiating network call
@@ -106,6 +108,7 @@ class NasaFirmsNetworkDataSource(
       .build()
 
     AppLogger.recordEvent("NASA_FIRMS_REQUEST_SENT: source=$source area=$areaCoordinates dayRange=$dayRange")
+    AppLogger.recordEvent("REQUEST_SENT: method=GET url=api/area/csv/[REDACTED]/$source/$areaCoordinates/$dayRange")
 
     try {
       val response = okHttpClient.newCall(request).execute()
@@ -114,6 +117,9 @@ class NasaFirmsNetworkDataSource(
       val responseBody = response.body?.string()
       val byteCount = responseBody?.length ?: 0
 
+      AppLogger.recordEvent("HTTP_STATUS: code=$statusCode")
+      AppLogger.recordEvent("RESPONSE_RECEIVED: code=$statusCode message=${response.message}")
+      AppLogger.recordEvent("RESPONSE_BYTES: count=$byteCount bytes")
       AppLogger.recordEvent("NASA_FIRMS_RESPONSE_RECEIVED: httpStatus=$statusCode bytes=$byteCount")
 
       // Calculate SHA-256 hash of response for internal verification audit (zero credential leak)
@@ -154,6 +160,11 @@ class NasaFirmsNetworkDataSource(
       }
 
       if (!response.isSuccessful) {
+        when (statusCode) {
+          401, 403 -> AppLogger.recordEvent("LIVE_AUTH_FAILED: status=$statusCode")
+          429 -> AppLogger.recordEvent("LIVE_RATE_LIMITED: status=$statusCode")
+          else -> AppLogger.recordEvent("LIVE_NETWORK_FAILED: status=$statusCode")
+        }
         val diagCause = when (statusCode) {
           400 -> LiveApiDiagnosticCause.HTTP_400
           401 -> LiveApiDiagnosticCause.HTTP_401
@@ -244,6 +255,7 @@ class NasaFirmsNetworkDataSource(
       }
 
       AppLogger.recordEvent("NASA_FIRMS_RESPONSE_VALIDATED: httpStatus=$statusCode, isSuccessful=${response.isSuccessful}")
+      AppLogger.recordEvent("PARSE_STARTED: bytes=$byteCount sensor=$source")
 
       // Parse CSV Response
       val parseResult = try {
@@ -291,6 +303,10 @@ class NasaFirmsNetworkDataSource(
       }
 
       AppLogger.recordEvent("NASA_FIRMS_RESPONSE_PARSED: validRecords=${parseResult.validCount}, rawRecords=${parseResult.rawCount}, invalidRecords=${parseResult.invalidCount}")
+      AppLogger.recordEvent("PARSE_COMPLETED: valid=${parseResult.validCount} invalid=${parseResult.invalidCount} raw=${parseResult.rawCount}")
+      AppLogger.recordEvent("VALID_RECORD_COUNT: ${parseResult.validCount}")
+      AppLogger.recordEvent("INVALID_RECORD_COUNT: ${parseResult.invalidCount}")
+      AppLogger.recordEvent("LIVE_RESPONSE_PARSED: validCount=${parseResult.validCount}")
 
       // Calculate Freshness
       val freshness = calculateFreshness(parseResult.records, fetchTime)
@@ -307,8 +323,12 @@ class NasaFirmsNetworkDataSource(
       // If contains valid records:
       // status: DATA_SOURCE_AVAILABLE, count: validCount
       val state = if (parseResult.validCount == 0) {
+        AppLogger.recordEvent("LIVE_REQUEST_SUCCESS: sensor=$source")
+        AppLogger.recordEvent("LIVE_NO_RECORDS: 0 detections")
         FireDataSourceState.NO_DETECTIONS_IN_QUERY
       } else {
+        AppLogger.recordEvent("LIVE_REQUEST_SUCCESS: sensor=$source")
+        AppLogger.recordEvent("LIVE_RECORDS_AVAILABLE: count=${parseResult.validCount}")
         FireDataSourceState.DATA_SOURCE_AVAILABLE
       }
 
@@ -408,6 +428,7 @@ class NasaFirmsNetworkDataSource(
   }
 
   private fun logNetworkException(error: FireDataError, cause: Throwable) {
+    AppLogger.recordEvent("LIVE_NETWORK_FAILED: error=${error.message}")
     AppLogger.recordError(
       AppError(
         type = if (error is FireDataError.Timeout) ErrorType.API_TIMEOUT else ErrorType.NETWORK_ERROR,
