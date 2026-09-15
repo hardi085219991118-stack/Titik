@@ -1333,6 +1333,26 @@ fun NasaFirmsEvidenceCard(state: DashboardState) {
             color = if (isVerified) StatusVerified else MaterialTheme.colorScheme.primary
           )
           Text(
+            text = "DIAGNOSIS: ${state.diagnosticCause.name}",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontFamily = FontFamily.Monospace,
+              fontSize = 10.sp,
+              fontWeight = FontWeight.Bold
+            ),
+            color = if (state.diagnosticCause == com.example.core.fire.LiveApiDiagnosticCause.REQUEST_NOT_STARTED) {
+              MaterialTheme.colorScheme.primary
+            } else {
+              StatusBlocked
+            },
+            modifier = Modifier.testTag("diagnostic_cause_text")
+          )
+          Text(
+            text = "DETAIL: ${state.diagnosticDetail}",
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 9.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("diagnostic_detail_text")
+          )
+          Text(
             text = "HTTP STATUS: ${state.httpStatusCode ?: "N/A"} | SENSOR: ${state.satelliteSensorName}",
             style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp),
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1341,6 +1361,18 @@ fun NasaFirmsEvidenceCard(state: DashboardState) {
             text = "AREA BBOX: ${state.queryArea} | DAY RANGE: ${state.dayRange}",
             style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp),
             color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+          Text(
+            text = "BBOX STATUS: ${state.boundingBoxValidationStatus}",
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 9.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("audited_bbox_status_text")
+          )
+          Text(
+            text = "ENDPOINT: ${state.endpointAudited}",
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 8.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+            modifier = Modifier.testTag("audited_endpoint_text")
           )
         }
       }
@@ -1409,6 +1441,11 @@ fun NasaFirmsEvidenceCard(state: DashboardState) {
           text = "CREDENTIAL: ${state.credentialState.name} (${state.credentialType})",
           style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp),
           color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+          text = "MAP_KEY: HIDDEN (TIDAK DITAMPILKAN DI UI / LOGCAT)",
+          style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 9.sp),
+          color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
         )
         Text(
           text = "SECURITY: ${state.securityLimitation} (${state.architectureStatus})",

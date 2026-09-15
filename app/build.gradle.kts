@@ -1,4 +1,5 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -21,6 +22,15 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    val envProps = Properties()
+    val testCredsFile = file("src/main/assets/test_credentials.properties")
+    if (testCredsFile.exists()) {
+      testCredsFile.inputStream().use { stream -> envProps.load(stream) }
+    }
+    val firmsKey = (project.findProperty("FIRMS_MAP_KEY") as? String)
+      ?: envProps.getProperty("FIRMS_MAP_KEY", "")
+    buildConfigField("String", "FIRMS_MAP_KEY", "\"$firmsKey\"")
   }
 
   signingConfigs {

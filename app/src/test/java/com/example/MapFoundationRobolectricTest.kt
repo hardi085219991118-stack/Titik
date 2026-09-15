@@ -150,13 +150,15 @@ class MapFoundationRobolectricTest {
     val validation = CoordinateValidator.validateLocation(location)
 
     composeTestRule.setContent {
-      UserLocationInfoCard(
-        location = location,
-        locationStatus = LocationStatus.LOCATION_AVAILABLE,
-        validationResult = validation,
-        locationErrorMessage = null,
-        onRequestPermission = {}
-      )
+      MyApplicationTheme {
+        UserLocationInfoCard(
+          location = location,
+          locationStatus = LocationStatus.LOCATION_AVAILABLE,
+          validationResult = validation,
+          locationErrorMessage = null,
+          onRequestPermission = {}
+        )
+      }
     }
 
     composeTestRule.onNodeWithTag("user_location_info_card").assertIsDisplayed()
@@ -174,13 +176,15 @@ class MapFoundationRobolectricTest {
     val validation = CoordinateValidator.ValidationResult(isValid = false)
 
     composeTestRule.setContent {
-      UserLocationInfoCard(
-        location = null,
-        locationStatus = LocationStatus.LOCATION_PERMISSION_REQUIRED,
-        validationResult = validation,
-        locationErrorMessage = null,
-        onRequestPermission = {}
-      )
+      MyApplicationTheme {
+        UserLocationInfoCard(
+          location = null,
+          locationStatus = LocationStatus.LOCATION_PERMISSION_REQUIRED,
+          validationResult = validation,
+          locationErrorMessage = null,
+          onRequestPermission = {}
+        )
+      }
     }
 
     composeTestRule.onNodeWithTag("user_location_info_card").assertIsDisplayed()
@@ -199,13 +203,15 @@ class MapFoundationRobolectricTest {
     val validation = CoordinateValidator.validateLocation(invalidLocation)
 
     composeTestRule.setContent {
-      UserLocationInfoCard(
-        location = invalidLocation,
-        locationStatus = LocationStatus.LOCATION_AVAILABLE,
-        validationResult = validation,
-        locationErrorMessage = null,
-        onRequestPermission = {}
-      )
+      MyApplicationTheme {
+        UserLocationInfoCard(
+          location = invalidLocation,
+          locationStatus = LocationStatus.LOCATION_AVAILABLE,
+          validationResult = validation,
+          locationErrorMessage = null,
+          onRequestPermission = {}
+        )
+      }
     }
 
     composeTestRule.onNodeWithTag("invalid_location_warning").assertIsDisplayed()
@@ -220,10 +226,12 @@ class MapFoundationRobolectricTest {
     )
 
     composeTestRule.setContent {
-      MapFoundationCard(
-        state = state,
-        onOpenMap = { openedMap = true }
-      )
+      MyApplicationTheme {
+        MapFoundationCard(
+          state = state,
+          onOpenMap = { openedMap = true }
+        )
+      }
     }
 
     composeTestRule.onNodeWithTag("map_status_card").assertIsDisplayed()
@@ -242,7 +250,9 @@ class MapFoundationRobolectricTest {
     val state = DashboardState()
 
     composeTestRule.setContent {
-      FireDetectionCard(state = state)
+      MyApplicationTheme {
+        FireDetectionCard(state = state)
+      }
     }
 
     composeTestRule.onNodeWithTag("fire_detection_card").assertIsDisplayed()

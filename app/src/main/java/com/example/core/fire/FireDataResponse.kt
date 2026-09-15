@@ -30,7 +30,10 @@ data class FireDataResponse(
   val instrumentDistribution: Map<String, Int> = emptyMap(),
   val minAcquisitionTimeMillis: Long? = null,
   val maxAcquisitionTimeMillis: Long? = null,
-  val responseSha256Hash: String? = null
+  val responseSha256Hash: String? = null,
+  val responseByteCount: Int = 0,
+  val diagnosticCause: LiveApiDiagnosticCause = LiveApiDiagnosticCause.REQUEST_NOT_STARTED,
+  val diagnosticDetail: String? = null
 ) {
   val hasValidRecords: Boolean get() = validRecordCount > 0
 
@@ -39,20 +42,49 @@ data class FireDataResponse(
       state = FireDataSourceState.NOT_VERIFIED,
       records = emptyList(),
       rawRecordCount = 0,
-      validRecordCount = 0
+      validRecordCount = 0,
+      diagnosticCause = LiveApiDiagnosticCause.REQUEST_NOT_STARTED,
+      diagnosticDetail = "Permintaan live ke NASA FIRMS belum pernah dieksekusi sejak aplikasi dibuka (REQUEST_NOT_STARTED)."
     )
 
     fun credentialRequired(): FireDataResponse = FireDataResponse(
       state = FireDataSourceState.API_CREDENTIAL_REQUIRED,
       records = emptyList(),
-      error = FireDataError.MissingCredential
+      error = FireDataError.MissingCredential,
+      diagnosticCause = LiveApiDiagnosticCause.MISSING_CREDENTIAL,
+      diagnosticDetail = "Gagal memulai request: MAP_KEY NASA FIRMS belum dikonfigurasi (MISSING_CREDENTIAL)."
     )
 
     fun error(
       state: FireDataSourceState,
       error: FireDataError,
       requestTimeMillis: Long = System.currentTimeMillis(),
-      sourceSensor: String = NasaFirmsConstants.SENSOR_VIIRS_NOAA21
+      sourceSensor: String = NasaFirmsConstants.SENSOR_VIIRS_NOAA21,
+      diagnosticCause: LiveApiDiagnosticCause = when (error) {
+        is FireDataError.MissingCredential -> LiveApiDiagnosticCause.MISSING_CREDENTIAL
+        is FireDataError.DnsError -> LiveApiDiagnosticCause.DNS_FAILURE
+        is FireDataError.Timeout -> LiveApiDiagnosticCause.TIMEOUT
+        is FireDataError.SslError -> LiveApiDiagnosticCause.TLS_FAILURE
+        is FireDataError.NoInternet -> LiveApiDiagnosticCause.NETWORK_FAILURE
+        is FireDataError.EmptyResponse -> LiveApiDiagnosticCause.EMPTY_RESPONSE
+        is FireDataError.HttpError -> when (error.httpStatusCode) {
+          400 -> LiveApiDiagnosticCause.HTTP_400
+          401 -> LiveApiDiagnosticCause.HTTP_401
+          403 -> LiveApiDiagnosticCause.HTTP_403
+          404 -> LiveApiDiagnosticCause.HTTP_404
+          429 -> LiveApiDiagnosticCause.HTTP_429
+          500 -> LiveApiDiagnosticCause.HTTP_500
+          502 -> LiveApiDiagnosticCause.HTTP_502
+          503 -> LiveApiDiagnosticCause.HTTP_503
+          else -> LiveApiDiagnosticCause.UNKNOWN_ERROR
+        }
+        is FireDataError.InvalidResponse -> when {
+          error.reason.contains("HTML", ignoreCase = true) || error.reason.contains("<html", ignoreCase = true) -> LiveApiDiagnosticCause.INVALID_CSV
+          error.reason.contains("Header", ignoreCase = true) || error.reason.contains("latitude", ignoreCase = true) -> LiveApiDiagnosticCause.INVALID_SCHEMA
+          else -> LiveApiDiagnosticCause.PARSER_ERROR
+        }
+        else -> LiveApiDiagnosticCause.UNKNOWN_ERROR
+      }
     ): FireDataResponse = FireDataResponse(
       state = state,
       records = emptyList(),
@@ -63,7 +95,9 @@ data class FireDataResponse(
       fetchTimeMillis = System.currentTimeMillis(),
       sourceSensor = sourceSensor,
       error = error,
-      httpStatusCode = error.httpStatusCode
+      httpStatusCode = error.httpStatusCode,
+      diagnosticCause = diagnosticCause,
+      diagnosticDetail = error.message
     )
   }
 }

@@ -90,12 +90,20 @@ class DashboardViewModel(
         credentialState = credState,
         validFireRecordCount = null,
         fireCountDisplay = "--",
-        fireStatusText = "FIRE DATA SOURCE NOT VERIFIED",
-        fireNote = "Sumber data titik api belum dihubungkan. Menampilkan '--' karena belum ada data (Bukan 0 titik api).",
+        fireStatusText = if (credState == FireDataCredentialState.CONFIGURED) "READY FOR LIVE REQUEST" else "FIRE DATA SOURCE NOT VERIFIED",
+        fireNote = if (credState == FireDataCredentialState.CONFIGURED) {
+          "MAP_KEY terkonfigurasi (TEST_CREDENTIAL_ONLY). Tekan 'Perbarui Data Satelit' untuk melakukan live request ke NASA FIRMS."
+        } else {
+          "Sumber data titik api belum dihubungkan. Menampilkan '--' karena belum ada data (Bukan 0 titik api)."
+        },
         fireRecords = emptyList(),
         satelliteState = DataState.NOT_VERIFIED,
-        satelliteDisplay = "BELUM TERSEDIA",
-        satelliteNote = "DATA SOURCE NOT VERIFIED (Modul FIRE-006 belum aktif).",
+        satelliteDisplay = if (credState == FireDataCredentialState.CONFIGURED) "READY FOR LIVE REQUEST" else "BELUM TERSEDIA",
+        satelliteNote = if (credState == FireDataCredentialState.CONFIGURED) {
+          "NASA FIRMS: READY FOR LIVE REQUEST. Kredensial terdeteksi, siap mengirim live HTTPS request."
+        } else {
+          "DATA SOURCE NOT VERIFIED (MAP_KEY belum dikonfigurasi)."
+        },
         lastUpdateState = DataState.NOT_AVAILABLE,
         lastUpdateDisplay = "BELUM TERSEDIA",
         lastUpdateNote = "Waktu akuisisi satelit belum tersedia. Waktu perangkat tidak disamakan dengan waktu satelit (Aturan 7).",
@@ -154,11 +162,15 @@ class DashboardViewModel(
         credentialState = credState,
         validFireRecordCount = null,
         fireCountDisplay = "--",
-        fireStatusText = "API CREDENTIAL REQUIRED",
-        fireNote = "MAP_KEY NASA FIRMS belum dikonfigurasi. Daftarkan MAP_KEY resmi di https://firms.modaps.eosdis.nasa.gov.",
+        fireStatusText = if (credState == FireDataCredentialState.INVALID) "INVALID CREDENTIAL" else "API CREDENTIAL REQUIRED",
+        fireNote = if (credState == FireDataCredentialState.INVALID) {
+          "MAP_KEY NASA FIRMS ditolak atau tidak valid. Daftarkan MAP_KEY resmi di https://firms.modaps.eosdis.nasa.gov."
+        } else {
+          "MAP_KEY NASA FIRMS belum dikonfigurasi. Daftarkan MAP_KEY resmi di https://firms.modaps.eosdis.nasa.gov."
+        },
         fireRecords = emptyList(),
         satelliteState = DataState.ERROR,
-        satelliteDisplay = "CREDENTIAL REQUIRED",
+        satelliteDisplay = if (credState == FireDataCredentialState.INVALID) "INVALID CREDENTIAL" else "CREDENTIAL REQUIRED",
         satelliteNote = "MAP_KEY FIRMS diperlukan untuk mengakses web service NASA.",
         lastUpdateState = DataState.NOT_AVAILABLE,
         lastUpdateDisplay = "BELUM TERSEDIA",
@@ -239,11 +251,11 @@ class DashboardViewModel(
         credentialState = credState,
         validFireRecordCount = null,
         fireCountDisplay = "--",
-        fireStatusText = "INVALID DATA RESPONSE",
+        fireStatusText = "INVALID NASA FIRMS RESPONSE",
         fireNote = response.error?.message ?: "Payload CSV dari NASA FIRMS tidak valid.",
         fireRecords = emptyList(),
         satelliteState = DataState.ERROR,
-        satelliteDisplay = "INVALID RESPONSE",
+        satelliteDisplay = "INVALID NASA FIRMS RESPONSE",
         satelliteNote = "Format respons tidak dikenali.",
         lastUpdateState = DataState.NOT_AVAILABLE,
         lastUpdateDisplay = "BELUM TERSEDIA",
@@ -253,7 +265,9 @@ class DashboardViewModel(
       FireDataSourceState.CONNECTING -> current.copy(
         fireDataSourceState = FireDataSourceState.CONNECTING,
         isLoadingSatellite = true,
-        refreshSatelliteNote = "Sedang menghubungkan ke NASA FIRMS Web Services..."
+        fireStatusText = "MENGHUBUNGI NASA FIRMS...",
+        satelliteDisplay = "MENGHUBUNGI NASA FIRMS...",
+        refreshSatelliteNote = "MENGHUBUNGI NASA FIRMS..."
       )
 
       FireDataSourceState.CACHED -> current.copy(
@@ -279,24 +293,12 @@ class DashboardViewModel(
       )
     }
 
-    val gate = when {
-      credState == FireDataCredentialState.NOT_CONFIGURED || credState == FireDataCredentialState.INVALID ->
-        com.example.core.fire.LiveVerificationGate.LIVE_API_CREDENTIAL_REQUIRED
-      sourceState == FireDataSourceState.NETWORK_ERROR || sourceState == FireDataSourceState.TIMEOUT ->
-        com.example.core.fire.LiveVerificationGate.LIVE_API_NETWORK_ERROR
-      sourceState == FireDataSourceState.INVALID_DATA_RESPONSE ->
-        com.example.core.fire.LiveVerificationGate.LIVE_API_INVALID_RESPONSE
-      sourceState == FireDataSourceState.DATA_SOURCE_AVAILABLE || sourceState == FireDataSourceState.NO_DETECTIONS_IN_QUERY -> {
-        if (response.httpStatusCode == 200 && !response.isCached) {
-          com.example.core.fire.LiveVerificationGate.LIVE_API_VERIFIED
-        } else {
-          com.example.core.fire.LiveVerificationGate.LIVE_API_NOT_VERIFIED
-        }
-      }
-      sourceState == FireDataSourceState.DATA_SOURCE_UNAVAILABLE || sourceState == FireDataSourceState.RATE_LIMIT_EXCEEDED ->
-        com.example.core.fire.LiveVerificationGate.LIVE_API_ERROR
-      else -> com.example.core.fire.LiveVerificationGate.LIVE_API_NOT_VERIFIED
-    }
+    val auditResult = com.example.core.fire.LiveApiDiagnosticAuditor.auditPipeline(
+      credState = credState,
+      sourceState = sourceState,
+      response = response,
+      queryArea = response.requestArea
+    )
 
     val dataAgeDisplay = if (response.records.isNotEmpty() && response.fetchTimeMillis > 0) {
       val latestAcq = response.records.mapNotNull { it.acquisitionTimestampMillis }.maxOrNull()
@@ -343,7 +345,11 @@ class DashboardViewModel(
     }
 
     _uiState.value = newState.copy(
-      liveVerificationGate = gate,
+      liveVerificationGate = auditResult.gate,
+      diagnosticCause = auditResult.cause,
+      diagnosticDetail = auditResult.detail,
+      boundingBoxValidationStatus = auditResult.boundingBoxStatus,
+      endpointAudited = auditResult.endpoint,
       httpStatusCode = response.httpStatusCode,
       invalidRecordCount = response.invalidRecordCount,
       queryArea = response.requestArea,

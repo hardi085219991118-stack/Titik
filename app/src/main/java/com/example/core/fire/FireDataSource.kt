@@ -50,7 +50,48 @@ class NasaFirmsNetworkDataSource(
         state = FireDataSourceState.API_CREDENTIAL_REQUIRED,
         error = FireDataError.MissingCredential,
         requestTimeMillis = requestTime,
-        sourceSensor = source
+        sourceSensor = source,
+        diagnosticCause = LiveApiDiagnosticCause.MISSING_CREDENTIAL
+      )
+    }
+
+    // Validate sensor source
+    if (!LiveApiDiagnosticAuditor.isSourceValid(source)) {
+      AppLogger.recordEvent("NASA_FIRMS_REQUEST_ABORTED: Invalid source sensor '$source'")
+      val error = FireDataError.InvalidResponse("Sensor satelit '$source' tidak valid atau tidak didukung NASA FIRMS")
+      return@withContext FireDataResponse.error(
+        state = FireDataSourceState.DATA_SOURCE_UNAVAILABLE,
+        error = error,
+        requestTimeMillis = requestTime,
+        sourceSensor = source,
+        diagnosticCause = LiveApiDiagnosticCause.INVALID_SOURCE
+      )
+    }
+
+    // Validate area bounding box
+    val (isBBoxValid, bboxStatus) = LiveApiDiagnosticAuditor.validateBoundingBox(areaCoordinates)
+    if (!isBBoxValid) {
+      AppLogger.recordEvent("NASA_FIRMS_REQUEST_ABORTED: $bboxStatus")
+      val error = FireDataError.InvalidResponse(bboxStatus)
+      return@withContext FireDataResponse.error(
+        state = FireDataSourceState.DATA_SOURCE_UNAVAILABLE,
+        error = error,
+        requestTimeMillis = requestTime,
+        sourceSensor = source,
+        diagnosticCause = LiveApiDiagnosticCause.INVALID_AREA
+      )
+    }
+
+    // Validate dayRange
+    if (dayRange !in 1..10) {
+      AppLogger.recordEvent("NASA_FIRMS_REQUEST_ABORTED: Invalid dayRange $dayRange")
+      val error = FireDataError.InvalidResponse("dayRange harus antara 1 s/d 10 (diberikan: $dayRange)")
+      return@withContext FireDataResponse.error(
+        state = FireDataSourceState.DATA_SOURCE_UNAVAILABLE,
+        error = error,
+        requestTimeMillis = requestTime,
+        sourceSensor = source,
+        diagnosticCause = LiveApiDiagnosticCause.INVALID_DAY_RANGE
       )
     }
 
@@ -113,6 +154,17 @@ class NasaFirmsNetworkDataSource(
       }
 
       if (!response.isSuccessful) {
+        val diagCause = when (statusCode) {
+          400 -> LiveApiDiagnosticCause.HTTP_400
+          401 -> LiveApiDiagnosticCause.HTTP_401
+          403 -> LiveApiDiagnosticCause.HTTP_403
+          404 -> LiveApiDiagnosticCause.HTTP_404
+          429 -> LiveApiDiagnosticCause.HTTP_429
+          500 -> LiveApiDiagnosticCause.HTTP_500
+          502 -> LiveApiDiagnosticCause.HTTP_502
+          503 -> LiveApiDiagnosticCause.HTTP_503
+          else -> LiveApiDiagnosticCause.UNKNOWN_ERROR
+        }
         val error = FireDataError.HttpError(statusCode, responseBody?.take(200) ?: "No body")
         val state = when (statusCode) {
           401, 403 -> FireDataSourceState.API_CREDENTIAL_REQUIRED
@@ -139,7 +191,9 @@ class NasaFirmsNetworkDataSource(
           httpStatusCode = statusCode,
           requestArea = areaCoordinates,
           requestDayRange = dayRange,
-          responseSha256Hash = responseHash
+          responseSha256Hash = responseHash,
+          diagnosticCause = diagCause,
+          diagnosticDetail = error.message
         )
       }
 
@@ -163,7 +217,29 @@ class NasaFirmsNetworkDataSource(
           httpStatusCode = statusCode,
           requestArea = areaCoordinates,
           requestDayRange = dayRange,
-          responseSha256Hash = responseHash
+          responseSha256Hash = responseHash,
+          diagnosticCause = LiveApiDiagnosticCause.EMPTY_RESPONSE,
+          diagnosticDetail = "Server mengembalikan HTTP 200 dengan payload kosong."
+        )
+      }
+
+      val isHtmlResponse = responseBody.trim().startsWith("<html", ignoreCase = true) ||
+        responseBody.trim().startsWith("<!doctype", ignoreCase = true)
+      if (isHtmlResponse) {
+        val error = FireDataError.InvalidResponse("Server mengembalikan halaman HTML alih-alih data CSV")
+        return@withContext FireDataResponse(
+          state = FireDataSourceState.INVALID_DATA_RESPONSE,
+          records = emptyList(),
+          requestTimeMillis = requestTime,
+          fetchTimeMillis = fetchTime,
+          sourceSensor = source,
+          error = error,
+          httpStatusCode = statusCode,
+          requestArea = areaCoordinates,
+          requestDayRange = dayRange,
+          responseSha256Hash = responseHash,
+          diagnosticCause = LiveApiDiagnosticCause.INVALID_CSV,
+          diagnosticDetail = "Server mengembalikan dokumen HTML alih-alih CSV."
         )
       }
 
@@ -184,6 +260,10 @@ class NasaFirmsNetworkDataSource(
           defaultSatellite = satellite
         )
       } catch (e: Exception) {
+        val isSchemaError = e.message?.contains("Header", ignoreCase = true) == true ||
+          e.message?.contains("latitude", ignoreCase = true) == true ||
+          e.message?.contains("longitude", ignoreCase = true) == true
+        val diagCause = if (isSchemaError) LiveApiDiagnosticCause.INVALID_SCHEMA else LiveApiDiagnosticCause.PARSER_ERROR
         val error = FireDataError.InvalidResponse(e.message ?: "Failed parsing CSV response")
         AppLogger.recordError(
           AppError(
@@ -204,7 +284,9 @@ class NasaFirmsNetworkDataSource(
           httpStatusCode = statusCode,
           requestArea = areaCoordinates,
           requestDayRange = dayRange,
-          responseSha256Hash = responseHash
+          responseSha256Hash = responseHash,
+          diagnosticCause = diagCause,
+          diagnosticDetail = error.message
         )
       }
 
@@ -250,7 +332,8 @@ class NasaFirmsNetworkDataSource(
         instrumentDistribution = instrumentDist,
         minAcquisitionTimeMillis = minAcq,
         maxAcquisitionTimeMillis = maxAcq,
-        responseSha256Hash = responseHash
+        responseSha256Hash = responseHash,
+        responseByteCount = byteCount
       )
 
     } catch (e: SocketTimeoutException) {

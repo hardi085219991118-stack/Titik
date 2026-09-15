@@ -15,4 +15,5 @@
 .cxx
 local.properties
 .env
+test_credentials.properties
 debug.keystore

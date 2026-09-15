@@ -64,7 +64,7 @@ data class DashboardState(
 
   // Security Architecture & Evidence Audit (Prompt 006B Section 5, 6, 11, 13, 16)
   val architectureStatus: String = "CLIENT_ONLY_LIMITATION",
-  val credentialType: String = "CLIENT_SIDE_CREDENTIAL",
+  val credentialType: String = "TEST_CREDENTIAL_ONLY",
   val securityLimitation: String = "PRODUCTION_SECURITY_LIMITATION",
   val liveVerificationGate: com.example.core.fire.LiveVerificationGate = com.example.core.fire.LiveVerificationGate.LIVE_API_NOT_VERIFIED,
   val responseSha256Hash: String? = null,
@@ -76,5 +76,12 @@ data class DashboardState(
   val acquisitionRangeDisplay: String = "BELUM TERSEDIA",
   val satelliteDistributionDisplay: String = "BELUM TERSEDIA",
   val instrumentDistributionDisplay: String = "BELUM TERSEDIA",
-  val dataAgeDisplay: String = "BELUM TERSEDIA"
+  val dataAgeDisplay: String = "BELUM TERSEDIA",
+
+  // Diagnostic Engine & Pipeline Audit (Prompt 006C Section 1, 2, 3, 11)
+  val diagnosticCause: com.example.core.fire.LiveApiDiagnosticCause = com.example.core.fire.LiveApiDiagnosticCause.REQUEST_NOT_STARTED,
+  val diagnosticDetail: String = "Permintaan live ke NASA FIRMS belum pernah dieksekusi sejak aplikasi dibuka (REQUEST_NOT_STARTED).",
+  val endpointAudited: String = com.example.core.fire.LiveApiDiagnosticAuditor.OFFICIAL_ENDPOINT_TEMPLATE,
+  val boundingBoxValidationStatus: String = "VALID (WEST=113.5, SOUTH=-3.5, EAST=115.0, NORTH=-2.0)",
+  val sourcePriorityDisplay: String = "1: VIIRS_NOAA21_NRT, 2: VIIRS_NOAA20_NRT, 3: VIIRS_SNPP_NRT, 4: MODIS_NRT"
 )

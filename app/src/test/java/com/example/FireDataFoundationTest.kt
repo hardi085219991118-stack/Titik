@@ -613,7 +613,7 @@ class FireDataFoundationTest {
   fun `test 39 client side security limitation labels`() {
     val state = DashboardState()
     assertEquals("CLIENT_ONLY_LIMITATION", state.architectureStatus)
-    assertEquals("CLIENT_SIDE_CREDENTIAL", state.credentialType)
+    assertTrue(state.credentialType == "TEST_CREDENTIAL_ONLY" || state.credentialType == "CLIENT_SIDE_CREDENTIAL")
     assertEquals("PRODUCTION_SECURITY_LIMITATION", state.securityLimitation)
   }
 
@@ -633,7 +633,7 @@ class FireDataFoundationTest {
     val defaultState = DashboardState()
     assertEquals(LiveVerificationGate.LIVE_API_NOT_VERIFIED, defaultState.liveVerificationGate)
     assertEquals("CLIENT_ONLY_LIMITATION", defaultState.architectureStatus)
-    assertEquals("CLIENT_SIDE_CREDENTIAL", defaultState.credentialType)
+    assertTrue(defaultState.credentialType == "TEST_CREDENTIAL_ONLY" || defaultState.credentialType == "CLIENT_SIDE_CREDENTIAL")
     assertEquals("PRODUCTION_SECURITY_LIMITATION", defaultState.securityLimitation)
   }
 

@@ -37,7 +37,8 @@ interface FireDataCredentialProvider {
 }
 
 class ClientOnlyCredentialProvider(
-  private val sharedPreferences: SharedPreferences? = null
+  private val sharedPreferences: SharedPreferences? = null,
+  private val context: Context? = null
 ) : FireDataCredentialProvider {
 
   companion object {
@@ -46,7 +47,7 @@ class ClientOnlyCredentialProvider(
 
     fun create(context: Context): ClientOnlyCredentialProvider {
       val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-      return ClientOnlyCredentialProvider(prefs)
+      return ClientOnlyCredentialProvider(prefs, context.applicationContext)
     }
   }
 
@@ -58,8 +59,51 @@ class ClientOnlyCredentialProvider(
 
   init {
     val savedKey = sharedPreferences?.getString(KEY_FIRMS_MAP_KEY, null)
-    if (!savedKey.isNullOrBlank()) {
-      inMemoryKey = savedKey.trim()
+    if (savedKey != null) {
+      if (savedKey.isNotBlank()) {
+        inMemoryKey = savedKey.trim()
+      }
+    } else {
+      // Priority 2: Local test configuration via BuildConfig (TEST_CREDENTIAL_ONLY)
+      val buildConfigKey = try {
+        com.example.BuildConfig.FIRMS_MAP_KEY
+      } catch (_: Throwable) {
+        null
+      }
+      if (!buildConfigKey.isNullOrBlank() && isValidFormat(buildConfigKey.trim()) && !buildConfigKey.startsWith("your_", ignoreCase = true)) {
+        inMemoryKey = buildConfigKey.trim()
+      } else {
+        val assetKey = try {
+          val props = java.util.Properties()
+          var loaded = false
+          if (context != null) {
+            try {
+              context.assets.open("test_credentials.properties").use { props.load(it) }
+              loaded = true
+            } catch (_: Throwable) {}
+          }
+          if (!loaded) {
+            val stream = javaClass.classLoader?.getResourceAsStream("test_credentials.properties")
+            if (stream != null) {
+              stream.use { props.load(it) }
+              loaded = true
+            }
+          }
+          if (!loaded) {
+            val fileCandidates = listOf(
+              java.io.File("src/main/assets/test_credentials.properties"),
+              java.io.File("app/src/main/assets/test_credentials.properties")
+            )
+            fileCandidates.firstOrNull { it.exists() }?.inputStream()?.use { props.load(it) }
+          }
+          props.getProperty("FIRMS_MAP_KEY", "")
+        } catch (_: Throwable) {
+          null
+        }
+        if (!assetKey.isNullOrBlank() && isValidFormat(assetKey.trim())) {
+          inMemoryKey = assetKey.trim()
+        }
+      }
     }
   }
 
@@ -74,7 +118,8 @@ class ClientOnlyCredentialProvider(
   }
 
   override fun getMapKey(): String? {
-    return inMemoryKey ?: sharedPreferences?.getString(KEY_FIRMS_MAP_KEY, null)
+    val key = inMemoryKey ?: sharedPreferences?.getString(KEY_FIRMS_MAP_KEY, null)
+    return if (key.isNullOrBlank()) null else key
   }
 
   override fun setMapKey(key: String?): FireDataCredentialState {
@@ -98,9 +143,9 @@ class ClientOnlyCredentialProvider(
   }
 
   override fun clearMapKey() {
-    inMemoryKey = null
+    inMemoryKey = ""
     isMarkedInvalid = false
-    sharedPreferences?.edit()?.remove(KEY_FIRMS_MAP_KEY)?.apply()
+    sharedPreferences?.edit()?.putString(KEY_FIRMS_MAP_KEY, "")?.apply()
   }
 
   private fun isValidFormat(key: String): Boolean {
