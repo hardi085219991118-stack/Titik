@@ -18,6 +18,7 @@ import com.example.ui.dashboard.MapFoundationCard
 import com.example.ui.map.MapStatus
 import com.example.ui.map.MapUiState
 import com.example.ui.map.UserLocationInfoCard
+import com.example.ui.theme.MyApplicationTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull

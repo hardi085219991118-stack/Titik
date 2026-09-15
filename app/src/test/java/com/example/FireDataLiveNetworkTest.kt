@@ -14,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -40,13 +41,15 @@ class FireDataLiveNetworkTest {
     val credentialProvider = ClientOnlyCredentialProvider()
     val mapKey = credentialProvider.getMapKey()
 
-    assertNotNull("Testing MAP_KEY must be accessible via configuration", mapKey)
-    assertTrue("Testing MAP_KEY must not be blank", mapKey!!.isNotBlank())
+    assumeTrue(
+      "Testing MAP_KEY must be configured via environment or assets to run live network tests",
+      !mapKey.isNullOrBlank()
+    )
     assertEquals(FireDataCredentialState.CONFIGURED, credentialProvider.getCredentialState())
 
     val dataSource = NasaFirmsNetworkDataSource()
     val response = dataSource.fetchFireData(
-      mapKey = mapKey,
+      mapKey = mapKey!!,
       source = NasaFirmsConstants.SENSOR_VIIRS_NOAA21,
       areaCoordinates = NasaFirmsConstants.DEFAULT_MANTHANGAI_BBOX,
       dayRange = 1
